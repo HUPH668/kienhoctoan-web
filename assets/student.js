@@ -415,6 +415,54 @@
   }
 
 
+  /* ---------------- báo lỗi câu hỏi ---------------- */
+  const reported = new Set(); let reportedLoaded = false;
+  function reportDlg(p, it, num, btn) {
+    let kind = "key", sug = null;
+    const pickBox = h("div", { class: "rep-pick" });
+    const drawPick = () => {
+      pickBox.innerHTML = "";
+      if (kind !== "key") return;
+      pickBox.append(h("label", {}, "Theo em, đáp án đúng là:"));
+      if (it.t === "MC") {
+        const row = h("div", { class: "rep-mc" });
+        it.o.forEach((o, i) => row.append(h("button", { type: "button", class: "opt sm" + (sug === i ? " sel" : ""), onclick: () => { sug = i; drawPick(); } }, h("span", { class: "L" }, "ABCD"[i]))));
+        pickBox.append(row);
+      } else if (it.t === "TF") {
+        if (!Array.isArray(sug)) sug = Array.isArray(it.ans) ? it.ans.map((x) => (x == null ? null : x)) : [null, null, null, null];
+        it.o.forEach((o, i) => pickBox.append(h("div", { class: "rep-tf" }, h("b", {}, "abcd"[i] + ")"),
+          h("button", { type: "button", class: "t" + (sug[i] === true ? " on" : ""), onclick: () => { sug[i] = true; drawPick(); } }, "Đúng"),
+          h("button", { type: "button", class: "f" + (sug[i] === false ? " on" : ""), onclick: () => { sug[i] = false; drawPick(); } }, "Sai"))));
+      } else {
+        const inp = h("input", { type: "text", value: sug ?? "", placeholder: "Đáp số em tính được", oninput: (e) => (sug = e.target.value) });
+        pickBox.append(inp);
+      }
+    };
+    const kinds = [["key", "Đáp án bị sai"], ["question", "Đề sai hoặc thiếu dữ kiện"], ["other", "Lỗi khác (hình, chữ, lời giải…)"]];
+    const radios = h("div", { class: "rep-kinds" }, kinds.map(([v, l]) => h("label", { class: "chk" }, h("input", { type: "radio", name: "repk", value: v, checked: v === kind, onchange: () => { kind = v; drawPick(); } }), l)));
+    const note = h("textarea", { rows: 3, maxlength: 500, placeholder: "Em giải thích ngắn gọn vì sao (không bắt buộc)" });
+    drawPick();
+    let close;
+    close = KT.modal([h("h3", {}, "Báo lỗi câu " + (num + 1)), h("p", {}, "Thầy sẽ kiểm tra lại. Nếu đúng là câu bị lỗi, em được cộng 20 điểm kinh nghiệm và bài của em được chấm lại."),
+      radios, pickBox, h("label", {}, "Ghi chú"), note,
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async (e) => {
+          let s = null;
+          if (kind === "key") {
+            if (it.t === "MC") { if (sug == null) return KT.toast("Em chọn đáp án em cho là đúng.", "bad"); s = sug; }
+            else if (it.t === "TF") { if (!Array.isArray(sug) || sug.some((x) => x == null)) return KT.toast("Em chọn Đúng/Sai cho cả 4 ý.", "bad"); s = sug; }
+            else { if (!String(sug || "").trim()) return KT.toast("Em nhập đáp số em tính được.", "bad"); s = String(sug).trim(); }
+          } else if (!note.value.trim()) return KT.toast("Em ghi ngắn gọn lỗi ở đâu nhé.", "bad");
+          e.target.disabled = true;
+          try {
+            await rpc("report_question", { p_attempt: p.id, p_idx: it.idx, p_kind: kind, p_suggest: s, p_note: note.value });
+            close(); reported.add(it.qid);
+            btn.textContent = "✓ Đã báo lỗi"; btn.disabled = true; btn.classList.add("done");
+            KT.toast("Cảm ơn em! Thầy sẽ kiểm tra lại câu này.", "ok");
+          } catch (ex) { e.target.disabled = false; fail(ex); }
+        } }, "Gửi báo lỗi"))]);
+  }
+
   /* ---------------- bài bổ sung ---------------- */
   const remNames = (r) => (r.detail && r.detail.length ? r.detail : (r.lessons || []).map((k) => ({ key: k })))
     .map((d) => KT.lessonName(d.key, true) + (d.m != null ? " (" + pct(d.m) + "%)" : ""));
@@ -664,10 +712,14 @@
     fl.append(mk("Tất cả", () => true), mk("Sai / chưa đủ", (r) => r.status === "bad" || r.status === "part"), mk("Chưa làm", (r) => r.status === "skip"), mk("Đúng", (r) => r.status === "ok"));
     if (p.items.some((r) => r.conf === 1 && (r.status === "bad" || r.status === "part"))) fl.append(mk("Tưởng đúng mà sai", (r) => r.conf === 1 && (r.status === "bad" || r.status === "part")));
     fl.firstChild.classList.add("on");
-    const show = (f) => { listBox.innerHTML = ""; p.items.forEach((it, i) => { if (f(it)) listBox.append(KT.qBlock(it, i, "review", null, { withGrade: multiG, pts: it.pts })); }); if (!listBox.children.length) listBox.append(h("div", { class: "empty" }, "Không có câu nào.")); KT.typeset(listBox, p.figs); };
+    const canRep = p.status === "done" && !!sess;
+    const show = (f) => { listBox.innerHTML = ""; p.items.forEach((it, i) => { if (f(it)) listBox.append(KT.qBlock(it, i, "review", null, { withGrade: multiG, pts: it.pts,
+      onReport: canRep ? (x, btn) => reportDlg(p, x, i, btn) : null, reported: reported.has(it.qid) })); }); if (!listBox.children.length) listBox.append(h("div", { class: "empty" }, "Không có câu nào.")); KT.typeset(listBox, p.figs); };
     w.append(fl, listBox);
     w.append(h("p", { class: "foot" }, "* Mức độ có dấu sao là mức ước lượng."));
     app.append(w); show(() => true); KT.typeset(w, p.figs);
+    if (canRep && !reportedLoaded) rpc("my_reports").then((rs) => { reportedLoaded = true; (rs || []).forEach((r) => r.status === "open" && reported.add(r.qid));
+      if (reported.size && fl.querySelector(".on")) fl.querySelector(".on").click(); }).catch(() => { });
     // làm mới hồ sơ ngầm
     rpc("student_home").then((d) => (home = d)).catch(() => { });
   }

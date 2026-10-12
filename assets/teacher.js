@@ -44,18 +44,118 @@
 
   async function load() {
     try { ov = await T("t_overview"); } catch (e) { api.logout(); renderLogin(e.message); return; }
+    try { ov.n_reports = await T("t_reports_count"); } catch (e) { ov.n_reports = 0; }
     render();
   }
   function render() {
     stopPoll(); setWho(); app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["bank", "Ngân hàng câu hỏi"]];
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["bank", "Ngân hàng câu hỏi"]];
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, bank: tabBank })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, bank: tabBank })[tab](body);
   }
 
+
+  /* ---------------- CÂU BỊ BÁO LỖI ---------------- */
+  let repStatus = "open";
+  const REP_KIND = { key: "Đáp án sai", question: "Đề sai / thiếu dữ kiện", other: "Lỗi khác" };
+  const keyText = (t, k) => k == null ? "–" : t === "MC" ? "ABCDEF"[+k] : t === "TF" ? (Array.isArray(k) ? k.map((x, i) => "abcd"[i] + ")" + (x === true ? "Đ" : x === false ? "S" : "?")).join(" ") : "–") : String(k).replace(/\$/g, "");
+  async function tabReports(el) {
+    const selS = h("select", { id: "rpS", "aria-label": "Trạng thái", onchange: () => { repStatus = selS.value; el.innerHTML = ""; tabReports(el); } },
+      [["open", "Đang chờ kiểm tra"], ["fixed", "Đã sửa đáp án"], ["deleted", "Đã huỷ câu"], ["dismissed", "Đã bỏ qua (đáp án đúng)"]].map(([v, l]) => h("option", { value: v, selected: v === repStatus }, l)));
+    el.append(h("div", { class: "filters-row" }, h("div", {}, h("label", { for: "rpS" }, "Trạng thái"), selS)),
+      h("p", { class: "sub", style: "margin:8px 0 14px" }, "Học sinh bấm “Báo lỗi” ở phần xem lại bài. Sửa đáp án thì mọi bài đã làm có câu này được chấm lại ngay; huỷ câu thì câu bị ẩn khỏi ngân hàng và bài đã làm được tính đúng câu đó. Sửa trên web được giữ nguyên khi công cụ đồng bộ đọc lại file .tex — thầy nhớ sửa cả trong file."));
+    const box = h("div", { class: "loading" }, "Đang tải…"); el.append(box);
+    let rows;
+    try { rows = await T("t_reports", { p_status: repStatus }); } catch (e) { box.remove(); return fail(e); }
+    box.classList.remove("loading"); box.textContent = "";
+    if (!rows.length) { box.append(h("div", { class: "panel empty" }, repStatus === "open" ? "Không có câu nào đang chờ kiểm tra." : "Chưa có câu nào.")); return; }
+    const figs = {}; rows.forEach((r) => Object.assign(figs, r.figs || {}));
+    rows.forEach((r) => box.append(repCard(r, repStatus === "open", () => { el.innerHTML = ""; refreshCount().then(() => tabReports(el)); })));
+    KT.typeset(box, figs);
+  }
+  async function refreshCount() {
+    try { ov.n_reports = await T("t_reports_count"); } catch (e) { }
+    const b = document.querySelector('.tabs button.on'); if (b) { b.innerHTML = ""; b.append(ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"); }
+  }
+  function repCard(r, open, done) {
+    const st = r.stats || {}, n = +st.n || 0, pc = (x) => (n ? Math.round(100 * x / n) : 0);
+    const card = h("article", { class: "panel repcard" });
+    card.append(h("div", { class: "rc-head" },
+      h("span", { class: "pill bad" }, r.n + " HS báo"),
+      h("b", {}, KT.lessonName(r.g + "-" + r.l, true)),
+      h("span", { class: "lvl" }, KT.LV[r.lv] || r.lv), h("span", {}, TYPE_SHORT[r.t]),
+      r.tag ? h("span", { class: "mono" }, r.tag) : null,
+      h("span", { class: "rc-src", title: "File nguồn" }, r.src || ""),
+      !r.active ? h("span", { class: "pill" }, "Đã huỷ") : null, r.key_manual ? h("span", { class: "pill ok" }, "Đáp án đã sửa trên web") : null));
+    card.append(h("div", { class: "qtext", html: r.q }));
+    // phương án + tỉ lệ học sinh chọn
+    if (r.t === "MC") {
+      const mc = st.mc || {};
+      const ol = h("div", { class: "rc-opts" });
+      (r.o || []).forEach((o, i) => ol.append(h("div", { class: "rc-opt" + (+r.key === i ? " key" : "") },
+        h("span", { class: "L" }, "ABCDEF"[i]), h("div", { class: "v", html: o }),
+        h("span", { class: "rc-bar", title: (mc[i] || 0) + " lượt chọn" }, h("i", { style: "width:" + pc(mc[i] || 0) + "%" }), h("em", {}, pc(mc[i] || 0) + "%")))));
+      card.append(ol);
+    } else if (r.t === "TF") {
+      const tf = st.tf || [];
+      const ol = h("div", { class: "rc-opts" });
+      (r.o || []).forEach((o, i) => { const s = tf[i] || { t: 0, f: 0 }, tot = (+s.t + +s.f) || 0;
+        ol.append(h("div", { class: "rc-opt" }, h("span", { class: "L" }, "abcd"[i] + ")"), h("div", { class: "v", html: o }),
+          h("span", { class: "rc-tf" }, "Đáp án: ", h("b", { style: "color:var(--" + (Array.isArray(r.key) && r.key[i] ? "ok" : "bad") + ")" }, Array.isArray(r.key) ? (r.key[i] ? "Đúng" : "Sai") : "?"),
+            tot ? " · HS chọn Đúng " + Math.round(100 * s.t / tot) + "%" : ""))); });
+      card.append(ol);
+    } else {
+      card.append(h("div", { class: "rc-sa" }, "Đáp án hiện tại: ", h("b", {}, keyText("SA", r.key)),
+        (st.sa || []).length ? h("span", {}, " · Học sinh hay trả lời: " + st.sa.map((x) => x.v + " (" + x.c + ")").join(", ")) : null));
+    }
+    card.append(h("div", { class: "rc-meta" }, n ? n + " lượt làm câu này · " + pc(+st.ok || 0) + "% làm đúng theo đáp án hiện tại" : "Chưa có lượt làm nào"));
+    if (r.s) card.append(h("details", { class: "sol" }, h("summary", {}, "Xem lời giải trong file"), h("div", { html: r.s })));
+    // ý kiến học sinh
+    const ul = h("ul", { class: "rc-reps" });
+    (r.reports || []).forEach((x) => ul.append(h("li", {},
+      h("b", {}, x.name), h("span", { class: "sub" }, " · " + (x.class || "") + " · " + KT.dt(x.at)), " — ", h("span", { class: "pill" }, REP_KIND[x.kind] || x.kind),
+      x.suggest != null ? h("span", {}, " Đề xuất: ", h("b", {}, keyText(r.t, x.suggest))) : null,
+      x.ans != null ? h("span", { class: "sub" }, " (em đã chọn " + keyText(r.t, x.ans) + ")") : null,
+      x.note ? h("div", { class: "rc-note" }, "“" + x.note + "”") : null)));
+    card.append(ul);
+    if (!open) return card;
+    // sửa đáp án
+    const sugs = (r.reports || []).filter((x) => x.suggest != null).map((x) => JSON.stringify(x.suggest));
+    const top = sugs.length ? JSON.parse(Object.entries(sugs.reduce((a, s) => ((a[s] = (a[s] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1])[0][0]) : null;
+    let nk = top != null ? top : r.key;
+    const ed = h("div", { class: "rc-edit" });
+    const drawEd = () => {
+      ed.innerHTML = "";
+      if (r.t === "MC") (r.o || []).forEach((o, i) => ed.append(h("button", { type: "button", class: "kbtn" + (+nk === i ? " on" : ""), onclick: () => { nk = i; drawEd(); } }, "ABCDEF"[i])));
+      else if (r.t === "TF") { if (!Array.isArray(nk)) nk = [null, null, null, null]; nk = nk.slice();
+        (r.o || []).forEach((o, i) => ed.append(h("span", { class: "kgrp" }, "abcd"[i] + ")",
+          h("button", { type: "button", class: "kbtn" + (nk[i] === true ? " on" : ""), onclick: () => { nk[i] = true; drawEd(); } }, "Đ"),
+          h("button", { type: "button", class: "kbtn" + (nk[i] === false ? " on" : ""), onclick: () => { nk[i] = false; drawEd(); } }, "S")))); }
+      else ed.append(h("input", { type: "text", value: nk == null ? "" : String(nk), style: "max-width:220px", "aria-label": "Đáp số đúng", oninput: (e) => (nk = e.target.value) }));
+    };
+    drawEd();
+    const act = async (btn, fn, args, msg) => {
+      btn.disabled = true;
+      try { const x = await T(fn, args); if (x && x.error) { btn.disabled = false; return KT.toast(x.error, "bad"); }
+        KT.toast(msg + (x && x.regraded ? " · đã chấm lại " + x.regraded + " bài" : "") + (x && x.rewarded ? " · cộng KN cho " + x.rewarded + " em" : ""), "ok"); done(); }
+      catch (e) { btn.disabled = false; fail(e); }
+    };
+    const bFix = h("button", { class: "btn", onclick: (e) => {
+      let k = nk;
+      if (r.t === "MC") { if (k == null || isNaN(+k)) return KT.toast("Chọn đáp án đúng.", "bad"); k = +k; }
+      else if (r.t === "TF") { if (!Array.isArray(k) || k.some((x) => x == null)) return KT.toast("Chọn Đ/S cho cả 4 ý.", "bad"); }
+      else { k = String(k ?? "").trim(); if (!k) return KT.toast("Nhập đáp số.", "bad"); }
+      if (JSON.stringify(k) === JSON.stringify(r.key)) return KT.toast("Đáp án chưa thay đổi. Nếu đáp án cũ đúng, bấm “Đáp án đúng, bỏ qua”.", "bad");
+      act(e.target, "t_question_fix", { p_qid: r.qid, p_key: k }, "Đã sửa đáp án");
+    } }, "Lưu đáp án mới & chấm lại");
+    const bHide = h("button", { class: "btn ghost danger", onclick: (e) => KT.confirm("Huỷ câu này?", "Câu bị ẩn khỏi ngân hàng (không còn xuất hiện trong đề mới). Các bài đã làm có câu này sẽ được <b>tính đúng câu này cho mọi học sinh</b>.", "Huỷ câu", () => act(e.target, "t_question_hide", { p_qid: r.qid }, "Đã huỷ câu")) }, "Huỷ câu (sai đề)");
+    const bOk = h("button", { class: "btn ghost", onclick: (e) => act(e.target, "t_report_dismiss", { p_qid: r.qid }, "Đã giữ nguyên đáp án") }, "Đáp án đúng, bỏ qua");
+    card.append(h("div", { class: "rc-actions" }, h("div", {}, h("label", {}, "Đáp án đúng"), ed), h("div", { class: "rc-btns" }, bFix, bOk, bHide)));
+    return card;
+  }
 
   /* ---------------- THỐNG KÊ ---------------- */
   let stDays = store.get("kt_t_days", 120), stAsg = null, stSort = "avg", bankGrade = null;

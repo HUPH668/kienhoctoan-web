@@ -280,6 +280,11 @@
       else if (it.conf === 1) head.append(h("span", { class: "conftag" }, "Chắc chắn"));
       else if (it.conf === 0) head.append(h("span", { class: "conftag" }, it.status === "ok" ? "Đoán đúng" : "Đoán"));
       head.append(h("span", { class: "qsrc" }, KT.lessonName(it.g + "-" + it.l, opt.withGrade) + (opt.pts ? " · " + KT.fmt(opt.pts[0]) + "/" + KT.fmt(opt.pts[1]) + " đ" : "")));
+      if (opt.onReport) {
+        const rb = h("button", { type: "button", class: "repbtn" + (opt.reported ? " done" : ""), title: "Báo cho thầy nếu đáp án hoặc đề bị sai", disabled: !!opt.reported,
+          onclick: () => opt.onReport(it, rb) }, opt.reported ? "✓ Đã báo lỗi" : "⚑ Báo lỗi");
+        head.append(rb);
+      }
     }
     box.append(head, h("div", { class: "qtext", html: it.q }));
     const hasKey = it.key !== undefined;
