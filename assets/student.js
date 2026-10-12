@@ -7,7 +7,7 @@
   KT.initTheme(document.getElementById("themeBtn"));
 
   let sess = store.get("kt_stu", null);       // {token,name,code,class}
-  let home = null, stats = null, lboard = null, fameTab = "week", grade = store.get("kt_grade", 10);
+  let home = null, stats = null, lboard = null, fameTab = "week", grade = store.get("kt_grade", null);
   let cur = null;                              // bài đang làm (payload)
   let timerId = null, saveTimer = null, clockSkew = 0, dirty = new Set(), saving = false;
   let lastCtx = null;                          // ngữ cảnh để "làm đề khác cùng loại"
@@ -126,10 +126,11 @@
     try {
       [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null)]);
       clockSkew = new Date(home.server_now).getTime() - Date.now();
+      if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
     } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap empty" }, "Không tải được dữ liệu. ", h("button", { class: "btn sm", onclick: renderHome }, "Thử lại"))); return; }
     app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    w.append(h("div", { class: "hero" }, h("div", { class: "hero-tx" }, h("h1", {}, "Chào " + home.student.name.split(" ").slice(-1)[0] + "!"), h("p", {}, "Làm các bài được giao, hoặc tự luyện theo bài, chương, học kì, thi tốt nghiệp và đánh giá năng lực.")), levelCard()));
+    w.append(h("div", { class: "hero" }, h("div", { class: "hero-tx" }, h("h1", {}, "Chào " + home.student.name.split(" ").slice(-1)[0] + "!"), h("p", {}, grade >= 10 ? "Làm các bài được giao, hoặc tự luyện theo bài, chương, học kì, thi tốt nghiệp và đánh giá năng lực." : "Làm các bài được giao, hoặc tự luyện theo bài, chương, giữa kì và cuối kì.")), levelCard()));
 
     if ((home.remedials || []).length) w.append(remedialBlock());
     w.append(todayBlock());
@@ -342,7 +343,7 @@
       lsSel.append(og);
     }
     const f1 = [...lsSel.querySelectorAll("option")].find((o) => !o.disabled); if (f1) lsSel.value = f1.value;
-    cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "20 phút"), h("h3", {}, "Theo bài"), h("p", {}, "10 câu nhiều phương án, 2 đúng/sai, 2 trả lời ngắn."),
+    cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "20 phút"), h("h3", {}, "Theo bài"), h("p", {}, g >= 10 ? "10 câu nhiều phương án, 2 đúng/sai, 2 trả lời ngắn." : "Khoảng 14 câu trắc nghiệm của một bài học."),
       h("div", { class: "row stack" }, lsSel, h("button", { class: "btn", disabled: !f1, onclick: () => setup(B.lesson(g, +lsSel.value)) }, "Làm bài"))));
     const chSel = h("select", { "aria-label": "Chọn chương" });
     d.chapters.forEach((ch) => { const n = cnt(KT.chapterLessons(g, ch.no)); chSel.append(h("option", { value: ch.no, disabled: n < 5 }, "Chương " + romans[ch.no] + ". " + ch.name + " (" + n + ")")); });
@@ -350,13 +351,15 @@
     cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "45 phút"), h("h3", {}, "Theo chương"), h("p", {}, "Tổng hợp các bài trong chương."),
       h("div", { class: "row stack" }, chSel, h("button", { class: "btn", disabled: !f2, onclick: () => setup(B.chapter(g, +chSel.value)) }, "Làm bài"))));
     const tb = (code, lab) => { const bp = B.term(g, code); return h("button", { class: "btn", disabled: cnt(bp.lessons) < 6, onclick: () => setup(bp) }, lab); };
-    cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "90 phút · 12–4–6"), h("h3", {}, "Giữa kì & cuối kì"), h("p", {}, "Đề định kì theo phạm vi từng học kì, thang 10."),
+    cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, g >= 10 ? "90 phút · 12–4–6" : "90 phút"), h("h3", {}, "Giữa kì & cuối kì"), h("p", {}, "Đề định kì theo phạm vi từng học kì, thang 10."),
       h("div", { class: "terms" }, tb("GK1", "Giữa kì I"), tb("HK1", "Cuối kì I"), tb("GK2", "Giữa kì II"), tb("HK2", "Cuối kì II"))));
     cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "90 phút"), h("h3", {}, "Theo khối"), h("p", {}, "Đề tổng hợp cả năm Toán " + g + "."),
       h("div", { class: "row" }, h("button", { class: "btn", disabled: cnt(KT.lessonsOf(g)) < 6, onclick: () => setup(B.grade(g)) }, "Làm đề tổng hợp"))));
-    cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "90 phút · 22 câu"), h("h3", {}, "Thi tốt nghiệp THPT"), h("p", {}, "Cấu trúc 2025: 12 câu nhiều phương án, 4 câu đúng/sai, 6 câu trả lời ngắn."),
+    if (g === 9) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "90 phút"), h("h3", {}, "Ôn thi vào lớp 10"), h("p", {}, "Đề tổng hợp kiến thức lớp 9 (và một phần lớp 8)."),
+      h("div", { class: "row" }, h("button", { class: "btn acc", disabled: cnt(KT.blueprint.ts10().lessons) < 6, onclick: () => setup(B.ts10()) }, "Thi thử"))));
+    if (g >= 10) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "90 phút · 22 câu"), h("h3", {}, "Thi tốt nghiệp THPT"), h("p", {}, "Cấu trúc 2025: 12 câu nhiều phương án, 4 câu đúng/sai, 6 câu trả lời ngắn."),
       h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.tn()) }, "Thi thử"))));
-    cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "60 phút · 30 câu"), h("h3", {}, "Đánh giá năng lực"), h("p", {}, "Nhiều câu, thời gian ngắn, kiến thức lớp 10–12."),
+    if (g >= 10) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "60 phút · 30 câu"), h("h3", {}, "Đánh giá năng lực"), h("p", {}, "Nhiều câu, thời gian ngắn, kiến thức lớp 10–12."),
       h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.dgnl()) }, "Thi thử"))));
     const agg = KT.aggMastery(home.mastery, g);
     const weak = agg.lessons.filter((x) => x.w >= 2 && x.m < 0.8).sort((a, b) => a.m - b.m).slice(0, 3);
@@ -375,9 +378,10 @@
   function setup(bp) {
     const av = countsFor(bp.levels ? [] : bp.lessons);
     const avail = bp.levels ? null : av;
+    const base = avail ? KT.fitCounts(bp.counts, avail) : bp.counts;
     const inputs = {};
     const fld = (t) => h("div", {}, h("label", { for: "n" + t }, TYPE_SHORT[t]),
-      inputs[t] = h("input", { type: "number", id: "n" + t, min: 0, max: 60, value: avail ? Math.min(bp.counts[t] || 0, avail[t]) : (bp.counts[t] || 0) }),
+      inputs[t] = h("input", { type: "number", id: "n" + t, min: 0, max: 60, value: avail ? Math.min(base[t] || 0, avail[t]) : (base[t] || 0) }),
       avail ? h("div", { class: "avail" }, "Có sẵn: " + avail[t] + " câu") : null);
     const minIn = h("input", { type: "number", id: "nMin", min: 5, max: 180, value: bp.minutes });
     const short = avail ? ["MC", "TF", "SA"].filter((t) => (bp.counts[t] || 0) > avail[t]) : [];
@@ -689,7 +693,7 @@
       if (m < 0.6) out.push({ title: "Dạng " + TYPES[t].toLowerCase(), text: "Em mới đạt " + pct(m) + "% ở dạng này. " + (t === "TF" ? "Đọc kĩ từng ý — mỗi ý sai đều làm giảm điểm cả câu." : "Kiểm tra lại cách làm tròn và dấu của đáp số."), label: "Luyện dạng này",
         bp: improveBp(scope, { title: "Luyện dạng " + TYPE_SHORT[t], counts: t === "TF" ? { MC: 0, TF: 6, SA: 0 } : { MC: 0, TF: 0, SA: 8 }, minutes: 25 }) });
     }
-    if (!out.length) out.push({ title: "Thử sức đề khó hơn", text: "Em đã nắm vững phạm vi này. Hãy thử đề rộng hơn.", label: p.grade === 12 ? "Thi thử tốt nghiệp" : "Đề cả năm", bp: p.grade === 12 ? KT.blueprint.tn() : KT.blueprint.grade(p.grade || grade) });
+    if (!out.length) out.push({ title: "Thử sức đề khó hơn", text: "Em đã nắm vững phạm vi này. Hãy thử đề rộng hơn.", label: p.grade === 12 ? "Thi thử tốt nghiệp" : p.grade === 9 ? "Ôn thi vào 10" : "Đề cả năm", bp: p.grade === 12 ? KT.blueprint.tn() : p.grade === 9 ? KT.blueprint.ts10() : KT.blueprint.grade(p.grade || grade) });
     return out;
   }
 

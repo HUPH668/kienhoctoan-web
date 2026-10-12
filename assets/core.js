@@ -45,6 +45,15 @@
   KT.lessonsOf = (g) => Object.keys(LESSON).filter((k) => LESSON[k].g === +g);
   KT.lessonsInRange = (g, a, b) => KT.lessonsOf(g).filter((k) => LESSON[k].l >= a && LESSON[k].l <= b);
   KT.chapterLessons = (g, c) => KT.lessonsOf(g).filter((k) => LESSON[k].c === +c);
+  KT.GRADES = Object.keys(CUR).map(Number).sort((a, b) => a - b);
+  KT.guessGrade = (cls) => { const m = String(cls || "").match(/(?:^|[^0-9])(1[0-2]|[6-9])(?![0-9])/); return m && CUR[+m[1]] ? +m[1] : null; };
+  // dồn số câu sang dạng nhiều phương án khi ngân hàng chưa có câu đúng/sai, trả lời ngắn (thường gặp ở lớp 6–9)
+  KT.fitCounts = (c, av) => {
+    const out = { MC: c.MC || 0, TF: c.TF || 0, SA: c.SA || 0 }; let extra = 0;
+    for (const t of ["TF", "SA"]) if (out[t] > (av[t] || 0)) { extra += out[t] - (av[t] || 0); out[t] = av[t] || 0; }
+    out.MC = Math.min(av.MC || 0, out.MC + extra);
+    return out;
+  };
   KT.TERM_NAMES = { GK1: "Giữa học kì I", HK1: "Cuối học kì I", GK2: "Giữa học kì II", HK2: "Cuối học kì II" };
 
   /* các khuôn đề chuẩn */
@@ -56,6 +65,8 @@
     grade: (g) => ({ kind: "Theo khối", grade: g, title: "Đề tổng hợp cả năm · Toán " + g, lessons: KT.lessonsOf(g), counts: { ...KT.STD }, minutes: 90 }),
     tn: () => ({ kind: "Tốt nghiệp THPT", grade: 12, title: "Đề thi thử tốt nghiệp THPT môn Toán", lessons: [10, 11, 12].flatMap(KT.lessonsOf), counts: { ...KT.STD }, minutes: 90,
       mix: [{ g: 12, share: 0.75 }, { g: 11, share: 0.2 }, { g: 10, share: 0.05 }] }),
+    ts10: () => ({ kind: "Tuyển sinh 10", grade: 9, title: "Đề ôn thi vào lớp 10 · Toán", lessons: [8, 9].flatMap(KT.lessonsOf), counts: { ...KT.STD }, minutes: 90,
+      mix: [{ g: 9, share: 0.8 }, { g: 8, share: 0.2 }] }),
     dgnl: () => ({ kind: "Đánh giá năng lực", grade: 12, title: "Đề luyện thi Đánh giá năng lực · Toán", lessons: [10, 11, 12].flatMap(KT.lessonsOf), counts: { MC: 24, TF: 0, SA: 6 }, minutes: 60,
       weights: { MC: 1, TF: 4, SA: 1 }, mix: [{ g: 12, share: 0.4 }, { g: 11, share: 0.3 }, { g: 10, share: 0.3 }] }),
   };
