@@ -131,6 +131,7 @@
     const w = h("section", { class: "wrap" });
     w.append(h("div", { class: "hero" }, h("div", { class: "hero-tx" }, h("h1", {}, "Chào " + home.student.name.split(" ").slice(-1)[0] + "!"), h("p", {}, "Làm các bài được giao, hoặc tự luyện theo bài, chương, học kì, thi tốt nghiệp và đánh giá năng lực.")), levelCard()));
 
+    if ((home.remedials || []).length) w.append(remedialBlock());
     w.append(todayBlock());
 
     // bài được giao
@@ -147,6 +148,7 @@
         else if (now < op) state = h("span", { class: "pill" }, "Mở lúc " + KT.dt(a.opens_at));
         else if (now > cl) state = h("span", { class: "pill" }, "Đã đóng");
         else if (a.done >= a.max_attempts) state = h("span", { class: "pill ok" }, "Đã nộp");
+        else if (a.remedial) { state = h("span", { class: "pill warn" }, "Cần làm bài bổ sung"); btn = h("button", { class: "btn acc", onclick: () => startRemedial(a.remedial) }, "Làm bài bổ sung"); }
         else { state = h("span", { class: "pill ok" }, "Đang mở"); btn = h("button", { class: "btn acc", onclick: () => openAssignment(a) }, a.done ? "Làm lại" : "Bắt đầu"); }
         const res = a.last_attempt ? h("button", { class: "btn ghost sm", onclick: () => viewAttempt(a.last_attempt) }, "Xem kết quả") : null;
         list.append(h("div", { class: "card" }, h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, h("span", { class: "tag acc" }, a.kind), state),
@@ -391,12 +393,12 @@
           e.target.disabled = true;
           const b2 = Object.assign({}, bp, { counts: c, minutes: Math.max(5, Math.min(180, parseInt(minIn.value || bp.minutes, 10))) });
           try { const p = await rpc("start_attempt", { p_blueprint: b2 }); close(); lastCtx = { bp }; startExam(p); }
-          catch (ex) { fail(ex); e.target.disabled = false; }
+          catch (ex) { e.target.disabled = false; if (ex.data && ex.data.remedial) { close(); remErr(ex); } else fail(ex); }
         } }, "Bắt đầu làm bài"))]);
   }
   async function openAssignment(a) {
     const go = async () => {
-      try { const p = await rpc("start_attempt", { p_assignment: a.id }); lastCtx = null; startExam(p); } catch (e) { fail(e); }
+      try { const p = await rpc("start_attempt", { p_assignment: a.id }); lastCtx = null; startExam(p); } catch (e) { remErr(e); }
     };
     if (a.doing) return go();
     KT.confirm(a.title, "Bài gồm <b>" + a.n_q + " câu</b>, làm trong <b>" + a.minutes + " phút</b>. Đồng hồ bắt đầu chạy khi em bấm Bắt đầu và vẫn chạy nếu em thoát ra.", "Bắt đầu", go);
@@ -406,6 +408,59 @@
       const p = await rpc("get_attempt", { p_attempt: id });
       if (p.status === "doing") startExam(p); else showResult(p);
     } catch (e) { fail(e); }
+  }
+
+
+  /* ---------------- bài bổ sung ---------------- */
+  const remNames = (r) => (r.detail && r.detail.length ? r.detail : (r.lessons || []).map((k) => ({ key: k })))
+    .map((d) => KT.lessonName(d.key, true) + (d.m != null ? " (" + pct(d.m) + "%)" : ""));
+  async function startRemedial(id) {
+    try { const p = await rpc("start_remedial", { p_id: id }); lastCtx = null; if (p.status === "done") showResult(p); else startExam(p); }
+    catch (e) { fail(e); if (sess) renderHome(); }
+  }
+  function remErr(e) {
+    const rid = e && e.data && e.data.remedial;
+    if (!rid) return fail(e);
+    KT.confirm("Cần làm bài bổ sung trước", "Ở lần kiểm tra trước, em còn yếu một số bài học. Em hãy làm <b>bài bổ sung khoảng 10 câu</b> mức nhận biết – thông hiểu (20 phút) để củng cố, sau đó mới làm lại được bài kiểm tra.", "Làm bài bổ sung", () => startRemedial(rid));
+  }
+  function remedialBlock() {
+    const box = h("div", { class: "remblock" }, h("div", { class: "rb-head" }, h("h2", {}, "Bài bổ sung cần làm"),
+      h("p", {}, "Làm xong bài bổ sung thì em mới làm lại được bài kiểm tra tương ứng.")));
+    home.remedials.forEach((r) => box.append(h("div", { class: "rb-item" },
+      h("div", { class: "tx" }, h("b", {}, "Củng cố: " + remNames(r).join("; ")),
+        h("span", {}, "Từ bài: " + (r.src_title || "") + (r.src_score != null ? " · " + fmt(r.src_score) + " điểm" : "") + " · " + KT.dt(r.created_at))),
+      h("button", { class: "btn acc sm", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung"))));
+    return box;
+  }
+  function remedialCard(r, p) {
+    const names = remNames(r);
+    const retake = (r.retake_left || 0) > 0;
+    if (r.status === "done") return h("div", { class: "remcard done" }, h("div", { class: "ic", "aria-hidden": "true" }, "✓"),
+      h("div", { class: "tx" }, h("h3", {}, "Đã hoàn thành bài bổ sung"), h("p", {}, "Em đã củng cố " + names.join("; ") + (r.score != null ? " — đạt " + fmt(r.score) + " điểm." : ".") + (retake ? " Em có thể làm lại bài kiểm tra." : ""))),
+      r.attempt_id ? h("button", { class: "btn ghost sm", onclick: () => viewAttempt(r.attempt_id) }, "Xem bài bổ sung") : null);
+    return h("div", { class: "remcard" }, h("div", { class: "ic", "aria-hidden": "true" }, "!"),
+      h("div", { class: "tx" }, h("h3", {}, "Bài bổ sung bắt buộc"),
+        h("p", {}, "Em đang yếu: ", h("b", {}, names.join("; ")), ". Thầy giao khoảng 10 câu mức nhận biết – thông hiểu của " + (names.length > 1 ? "các bài này" : "bài này") + " (20 phút) để em củng cố."),
+        h("p", { class: "muted" }, retake ? "Em cần hoàn thành bài bổ sung trước khi làm lại bài kiểm tra." : "Bài kiểm tra này đã hết lượt làm, nhưng em vẫn nên làm bài bổ sung để không bị hổng kiến thức.")),
+      h("button", { class: "btn acc", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung ngay"));
+  }
+  function remDoneBlock(p) {
+    const r = p.remedial_of;
+    const box = h("div", { class: "remcard done" }, h("div", { class: "ic", "aria-hidden": "true" }, "✓"),
+      h("div", { class: "tx" }, h("h3", {}, "Hoàn thành bài bổ sung!"), h("p", {}, "Em vừa củng cố " + remNames(r).join("; ") + ". Bây giờ em có thể làm lại bài kiểm tra “" + (r.src_title || "") + "”.")));
+    const btn = h("button", { class: "btn acc", onclick: async () => {
+      btn.disabled = true;
+      try {
+        let pp;
+        if (r.assignment_id) pp = await rpc("start_attempt", { p_assignment: r.assignment_id });
+        else if (r.src_bp) pp = await rpc("start_attempt", { p_blueprint: r.src_bp });
+        else return;
+        lastCtx = r.src_bp ? { bp: r.src_bp } : null; startExam(pp);
+      } catch (e) { btn.disabled = false; remErr(e); }
+    } }, "Làm lại bài kiểm tra");
+    if ((r.retake_left || 0) > 0 && (r.assignment_id || r.src_bp)) box.append(btn);
+    else if (r.assignment_id) box.querySelector("p").textContent = "Em vừa củng cố " + remNames(r).join("; ") + ". Bài kiểm tra “" + (r.src_title || "") + "” đã hết lượt làm hoặc đã đóng.";
+    return box;
   }
 
   /* ---------------- làm bài ---------------- */
@@ -546,6 +601,14 @@
     kp.append(kpi(Math.floor(dur / 60) + " phút " + (dur % 60) + " giây", "Thời gian làm bài", null));
     w.append(h("div", { class: "res-top" }, h("div", { class: "score" }, h("div", { class: "big" }, fmt(s), h("small", {}, " /10")), h("div", { class: "lab" }, (sess ? sess.name : "") + " · " + p.kind), h("div", { class: "rank" }, "Xếp loại: " + rank)), kp));
     if (p.xp != null) w.append(xpBlock(p, fresh));
+    if (p.remedial_of) w.append(remDoneBlock(p));
+    const multiG0 = new Set(p.items.map((x) => x.g)).size > 1;
+    const lRows = Object.entries(ev.byL).map(([k, v]) => ({ label: KT.lessonName(k, multiG0), m: v.m / v.w, sub: v.ok + "/" + v.n + " câu đúng hoàn toàn" })).sort((a, b) => a.m - b.m);
+    if (lRows.length) {
+      w.append(h("div", { class: "section-t" }, "Phân tích theo bài học"));
+      w.append(h("div", { class: "panel" }, h("p", { class: "muted", style: "margin:0 0 10px" }, "Tỉ lệ điểm em đạt được ở từng bài trong đề này (bài yếu nhất ở trên)."), KT.hbars(lRows), KT.statusLegend()));
+    }
+    if (p.remedial) w.append(remedialCard(p.remedial, p));
 
     // đa giác
     w.append(h("div", { class: "section-t" }, "Thống kê đa giác điểm mạnh – điểm yếu"));

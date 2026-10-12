@@ -49,11 +49,70 @@
   function render() {
     stopPoll(); setWho(); app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["bank", "Ngân hàng câu hỏi"]];
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["bank", "Ngân hàng câu hỏi"]];
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, assign: tabAssign, classes: tabClasses, bank: tabBank })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, bank: tabBank })[tab](body);
+  }
+
+
+  /* ---------------- THỐNG KÊ ---------------- */
+  let stDays = store.get("kt_t_days", 120), stAsg = null, stSort = "avg";
+  async function tabStats(el) {
+    const classes = ov.classes || [];
+    if (!classes.length) { el.append(h("div", { class: "panel empty" }, "Chưa có lớp nào. Vào mục “Lớp & học sinh” để tạo lớp.")); return; }
+    if (!curClass || !classes.some((c) => c.id === curClass)) curClass = classes[0].id;
+    const selC = h("select", { id: "stC", onchange: () => { curClass = +selC.value; store.set("kt_t_class", curClass); stAsg = null; render(); } },
+      classes.map((c) => h("option", { value: c.id, selected: c.id === curClass }, c.name + " (" + c.n + " HS)")));
+    const selD = h("select", { id: "stD", onchange: () => { stDays = +selD.value; store.set("kt_t_days", stDays); render(); } },
+      [[30, "30 ngày qua"], [90, "3 tháng qua"], [120, "4 tháng qua"], [365, "1 năm qua"], [3650, "Toàn bộ"]].map(([v, l]) => h("option", { value: v, selected: v === stDays }, l)));
+    const asgs = (ov.assignments || []).filter((a) => a.class_id === curClass);
+    const selA = h("select", { id: "stA", onchange: () => { stAsg = selA.value ? +selA.value : null; render(); } },
+      h("option", { value: "" }, "Tất cả bài (giao + tự luyện)"), asgs.map((a) => h("option", { value: a.id, selected: a.id === stAsg }, a.title)));
+    el.append(h("div", { class: "filters-row" },
+      h("div", {}, h("label", { for: "stC" }, "Lớp"), selC), h("div", {}, h("label", { for: "stD" }, "Thời gian"), selD),
+      h("div", { class: "grow" }, h("label", { for: "stA" }, "Bài kiểm tra"), selA)));
+    const box = h("div", {}, h("div", { class: "loading" }, "Đang tải thống kê…")); el.append(box);
+    let d;
+    try { d = await T("t_class_stats", { p_class: curClass, p_days: stDays, p_assignment: stAsg }); } catch (e) { box.innerHTML = ""; fail(e); return; }
+    box.innerHTML = "";
+    const tile = (n, l, cls) => h("div", { class: "kpi" + (cls ? " " + cls : "") }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
+    const rm = d.remedial || {};
+    box.append(h("div", { class: "kpis st-kpis" }, tile(String(d.n_students), "Học sinh"), tile(String(d.n_attempts), "Bài kiểm tra đã nộp"),
+      tile(d.avg == null ? "—" : fmt(d.avg), "Điểm trung bình"), tile(rm.pending + " / " + rm.done, "Bài bổ sung: chờ / đã xong", rm.pending ? "warn" : "")));
+    if (!d.n_attempts) { box.append(h("div", { class: "panel empty", style: "margin-top:14px" }, "Lớp chưa có bài kiểm tra nào trong khoảng thời gian này.")); return; }
+    const wk = (d.weekly || []).map((x) => { const dt = new Date(x.w); return { x: dt.getDate() + "/" + (dt.getMonth() + 1), y: +x.avg, tip: "Tuần từ " + dt.getDate() + "/" + (dt.getMonth() + 1) + ": <b>" + fmt(x.avg) + " điểm</b> (" + x.n + " bài)" }; });
+    box.append(h("div", { class: "st-grid" },
+      h("div", { class: "panel" }, h("h3", {}, "Phân bố điểm"), h("p", { class: "muted" }, "Số bài theo từng mức điểm."), KT.histo(d.scores || [])),
+      h("div", { class: "panel" }, h("h3", {}, "Điểm trung bình theo tuần"), h("p", { class: "muted" }, "Xu hướng của cả lớp."), KT.lineChart(wk, { label: "Điểm trung bình theo tuần" }))));
+    const lessons = (d.lessons || []).slice().sort((a, b) => a.m - b.m);
+    const mlv = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
+    const lvRows = ["NB", "TH", "VD", "VDC"].map((k) => (d.levels || []).find((x) => x.lv === k)).filter(Boolean).map((x) => ({ label: mlv[x.lv], m: +x.m, sub: x.n + " lượt câu" }));
+    const tRows = ["MC", "TF", "SA"].map((k) => (d.types || []).find((x) => x.t === k)).filter(Boolean).map((x) => ({ label: TYPES[x.t], m: +x.m, sub: x.n + " lượt câu" }));
+    box.append(h("div", { class: "panel wide-bars", style: "margin-top:14px" }, h("h3", {}, "Mức nắm vững theo bài học"), h("p", { class: "muted" }, "Bài yếu nhất ở trên. “HS yếu” = số học sinh đạt dưới 50% ở bài đó."),
+        KT.hbars(lessons.map((x) => ({ label: KT.lessonName(x.key, true), m: +x.m, sub: x.n + " lượt câu · " + x.ns + " HS" + (x.weak ? " · " + x.weak + " HS yếu" : "") }))), KT.statusLegend()));
+    box.append(h("div", { class: "st-grid" },
+      h("div", { class: "panel" }, h("h3", {}, "Theo mức độ"), KT.hbars(lvRows)),
+      h("div", { class: "panel" }, h("h3", {}, "Theo dạng câu"), KT.hbars(tRows))));
+    // bảng học sinh
+    const rows = (d.students || []).slice();
+    const sorters = { avg: (a, b) => (a.avg ?? 99) - (b.avg ?? 99), name: (a, b) => a.name.localeCompare(b.name, "vi"), rem: (a, b) => b.rem_pending - a.rem_pending || (a.avg ?? 99) - (b.avg ?? 99), n: (a, b) => a.n - b.n };
+    rows.sort(sorters[stSort]);
+    const selS = h("select", { id: "stS", onchange: () => { stSort = selS.value; render(); } },
+      [["avg", "Điểm thấp trước"], ["rem", "Còn bài bổ sung trước"], ["n", "Làm ít bài trước"], ["name", "Theo tên"]].map(([v, l]) => h("option", { value: v, selected: v === stSort }, l)));
+    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Mã", "Học sinh", "Số bài", "Điểm TB", "Xu hướng", "Bài đang yếu", "Bài bổ sung"].map((x) => h("th", {}, x)))));
+    const tbody = h("tbody");
+    rows.forEach((r) => tbody.append(h("tr", {},
+      h("td", {}, r.code), h("td", {}, h("b", {}, r.name)), h("td", { class: "num" }, String(r.n)),
+      h("td", { class: "num" }, r.avg == null ? "—" : h("span", { class: "sc-pill " + (r.avg >= 8 ? "ok" : r.avg >= 5 ? "warn" : "bad") }, fmt(r.avg))),
+      h("td", {}, KT.spark(r.trend || [])),
+      h("td", { class: "weakcell" }, (r.weak || []).length ? (r.weak || []).map((x) => h("span", { class: "wk", title: KT.lessonName(x.key, true) }, "B" + x.key.split("-")[1] + " · " + pct(x.m) + "%")) : h("span", { class: "muted" }, r.n ? "Không có" : "—")),
+      h("td", {}, r.rem_pending ? h("span", { class: "pill warn" }, "Chờ " + r.rem_pending) : null, r.rem_done ? h("span", { class: "pill ok" }, "Xong " + r.rem_done) : null, !r.rem_pending && !r.rem_done ? h("span", { class: "muted" }, "—") : null))));
+    tb.append(tbody);
+    box.append(h("div", { class: "panel", style: "margin-top:14px" }, h("div", { class: "review-t", style: "margin:0 0 10px" }, h("h3", { style: "margin:0" }, "Từng học sinh"), h("span", { class: "sp" }),
+      h("label", { for: "stS", style: "margin:0 6px 0 0" }, "Sắp xếp"), selS), h("div", { class: "tbl-wrap" }, tb)));
+    KT.tipify(box);
   }
 
   /* ---------------- THEO DÕI ---------------- */

@@ -392,4 +392,81 @@
         h("span", { class: "xpv" }, KT.num(r[key]), h("small", {}, " KN")));
     }));
   };
+
+  /* ---------- biểu đồ (SVG/HTML thuần, có chú giải khi rê chuột) ---------- */
+  let tipEl = null;
+  const tipShow = (e) => {
+    const t = e.currentTarget.getAttribute("data-tip"); if (!t) return;
+    if (!tipEl) { tipEl = h("div", { class: "ktip", role: "tooltip" }); document.body.append(tipEl); }
+    tipEl.innerHTML = t; tipEl.style.display = "block";
+    const r = e.currentTarget.getBoundingClientRect(), w = tipEl.offsetWidth, hh = tipEl.offsetHeight;
+    let x = r.left + r.width / 2 - w / 2, y = r.top - hh - 8;
+    x = Math.max(8, Math.min(x, window.innerWidth - w - 8)); if (y < 8) y = r.bottom + 8;
+    tipEl.style.left = x + "px"; tipEl.style.top = y + "px";
+  };
+  const tipHide = () => { if (tipEl) tipEl.style.display = "none"; };
+  KT.tipify = (root) => { root.querySelectorAll("[data-tip]").forEach((el) => {
+    el.addEventListener("mouseenter", tipShow); el.addEventListener("mouseleave", tipHide);
+    el.addEventListener("focus", tipShow); el.addEventListener("blur", tipHide);
+    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+  }); return root; };
+  KT.level3 = (m) => (m >= 0.8 ? "ok" : m >= 0.5 ? "warn" : "bad");
+  KT.LEVEL3_LABEL = { ok: "Vững", warn: "Chưa chắc", bad: "Yếu" };
+  KT.statusLegend = () => h("div", { class: "chart-legend" },
+    ["ok", "warn", "bad"].map((k) => h("span", {}, h("i", { class: "sw " + k }), KT.LEVEL3_LABEL[k] + (k === "ok" ? " (≥ 80%)" : k === "warn" ? " (50–79%)" : " (< 50%)"))));
+  // thanh ngang: rows = [{label, m (0..1), sub, tip}]
+  KT.hbars = (rows, opt = {}) => {
+    const box = h("div", { class: "hbars" });
+    rows.forEach((r) => {
+      const st = opt.status === false ? "brand" : KT.level3(r.m);
+      box.append(h("div", { class: "hb", "data-tip": r.tip || (KT.esc(r.label) + ": <b>" + KT.pct(r.m) + "%</b>" + (r.sub ? "<br>" + KT.esc(r.sub) : "")) },
+        h("div", { class: "hb-l" }, h("span", {}, r.label), r.sub ? h("small", {}, r.sub) : null),
+        h("div", { class: "hb-t" }, h("i", { class: st, style: "width:" + Math.max(1.5, KT.pct(r.m)) + "%" })),
+        h("div", { class: "hb-v" }, KT.pct(r.m) + "%", opt.status === false ? null : h("small", { class: "st " + st }, KT.LEVEL3_LABEL[st]))));
+    });
+    if (!rows.length) box.append(h("div", { class: "empty" }, opt.empty || "Chưa có dữ liệu."));
+    return KT.tipify(box);
+  };
+  // phân bố điểm 0–10 (10 cột)
+  KT.histo = (scores) => {
+    const bins = Array(10).fill(0); scores.forEach((s) => { if (s == null) return; bins[Math.min(9, Math.max(0, Math.floor(+s)))]++; });
+    const W = 520, H = 220, L = 34, B = 30, T = 14, R = 8, mx = Math.max(1, ...bins), step = Math.max(1, Math.ceil(mx / 4));
+    const top = Math.ceil(mx / step) * step, cw = (W - L - R) / 10, bw = Math.max(6, cw - 10);
+    const y = (v) => T + (H - T - B) * (1 - v / top);
+    let g = "";
+    for (let v = 0; v <= top; v += step) g += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text class="ax" x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + "</text>";
+    let bars = "";
+    bins.forEach((n, i) => {
+      const x = L + i * cw + (cw - bw) / 2, yy = y(n), hh = Math.max(0, y(0) - yy);
+      const col = i < 5 ? "bad" : i < 8 ? "warn" : "ok";
+      bars += '<g class="hit" data-tip="Điểm ' + i + (i === 9 ? "–10" : " đến dưới " + (i + 1)) + ": <b>" + n + " bài</b>\"><rect class=\"bg\" x=\"" + (L + i * cw) + '" y="' + T + '" width="' + cw + '" height="' + (H - T - B) + '"/>'
+        + (n ? '<path class="bar ' + col + '" d="M' + x + "," + (yy + hh) + "V" + (yy + Math.min(4, hh)) + "Q" + x + "," + yy + " " + (x + Math.min(4, bw / 2)) + "," + yy + "H" + (x + bw - Math.min(4, bw / 2)) + "Q" + (x + bw) + "," + yy + " " + (x + bw) + "," + (yy + Math.min(4, hh)) + "V" + (yy + hh) + 'Z"/>' : "")
+        + '<text class="ax" x="' + (L + i * cw + cw / 2) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + i + "</text></g>";
+    });
+    const el = h("div", { class: "chart", html: '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Phân bố điểm">' + g + '<line class="base" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '"/>' + bars + "</svg>" });
+    return KT.tipify(el);
+  };
+  // đường: pts = [{x: nhãn, y: số, tip}], thang 0..10
+  KT.lineChart = (pts, opt = {}) => {
+    const W = 520, H = 220, L = 34, B = 30, T = 14, R = 14, lo = opt.min ?? 0, hi = opt.max ?? 10;
+    const n = pts.length, xs = (i) => (n <= 1 ? (L + W - R) / 2 : L + (W - L - R) * i / (n - 1)), y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    let g = "";
+    for (let v = lo; v <= hi; v += (hi - lo) / 5) g += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text class="ax" x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + Math.round(v) + "</text>";
+    const every = Math.max(1, Math.ceil(n / 6));
+    pts.forEach((p, i) => { if (i % every === 0 || i === n - 1) g += '<text class="ax" x="' + xs(i) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + KT.esc(p.x) + "</text>"; });
+    const path = pts.map((p, i) => (i ? "L" : "M") + xs(i).toFixed(1) + "," + y(p.y).toFixed(1)).join("");
+    let dots = "";
+    pts.forEach((p, i) => { dots += '<g class="hit" data-tip="' + KT.esc(p.tip || (p.x + ": " + p.y)).replace(/&lt;(\/?b|br)&gt;/g, "<$1>") + '"><line class="xh" x1="' + xs(i) + '" x2="' + xs(i) + '" y1="' + T + '" y2="' + y(lo) + '"/><circle class="hz" cx="' + xs(i) + '" cy="' + y(p.y) + '" r="14"/><circle class="dot" cx="' + xs(i) + '" cy="' + y(p.y) + '" r="4.5"/></g>'; });
+    const el = h("div", { class: "chart", html: '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + KT.esc(opt.label || "Biểu đồ đường") + '">' + g + '<line class="base" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(lo) + '" y2="' + y(lo) + '"/>' + (n > 1 ? '<path class="ln" d="' + path + '"/>' : "") + dots + "</svg>" });
+    if (!n) el.innerHTML = '<div class="empty">Chưa có dữ liệu.</div>';
+    return KT.tipify(el);
+  };
+  KT.spark = (vals) => {
+    if (!vals || !vals.length) return h("span", { class: "muted" }, "—");
+    const W = 90, H = 26, n = vals.length, xs = (i) => (n <= 1 ? W / 2 : 3 + (W - 6) * i / (n - 1)), y = (v) => 3 + (H - 6) * (1 - v / 10);
+    const d = vals.map((v, i) => (i ? "L" : "M") + xs(i).toFixed(1) + "," + y(+v).toFixed(1)).join("");
+    const last = vals[n - 1];
+    return h("span", { class: "spark", "data-tip": "Các bài gần đây: " + vals.map((v) => KT.fmt(v)).join(" → "),
+      html: '<svg viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H + '">' + (n > 1 ? '<path d="' + d + '"/>' : "") + '<circle cx="' + xs(n - 1) + '" cy="' + y(+last) + '" r="3"/></svg>' });
+  };
 })();
