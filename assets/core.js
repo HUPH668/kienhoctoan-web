@@ -54,6 +54,33 @@
     out.MC = Math.min(av.MC || 0, out.MC + extra);
     return out;
   };
+  /* ---------- video ôn tập (TikTok / YouTube) ---------- */
+  KT.videoSrc = (v) => v.p === "yt" ? "https://www.youtube-nocookie.com/embed/" + v.vid + "?rel=0&playsinline=1"
+    : "https://www.tiktok.com/player/v1/" + v.vid + "?music_info=0&description=0&rel=0&controls=1&progress_bar=1&play_button=1&volume_control=1&fullscreen_button=1&timestamp=1";
+  KT.videoFrame = (v) => h("div", { class: "vframe" + (v.p === "yt" ? " wide" : "") },
+    h("iframe", { src: KT.videoSrc(v), title: v.title || "Video ôn tập", loading: "lazy", allow: "autoplay; fullscreen; encrypted-media; picture-in-picture", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin" }));
+  KT.videosFor = (vids, keys) => { const set = new Set(keys); return (vids || []).filter((v) => set.has(v.g + "-" + v.l)); };
+  // cửa sổ xem video: danh sách bên cạnh, bấm để chuyển
+  KT.videoModal = (list, heading) => {
+    if (!list || !list.length) return;
+    let cur = 0;
+    const stage = h("div", { class: "vstage" }), cap = h("div", { class: "vcap" }), side = h("div", { class: "vlist" });
+    const draw = () => {
+      const v = list[cur]; stage.innerHTML = ""; stage.append(KT.videoFrame(v));
+      cap.innerHTML = ""; cap.append(h("b", {}, v.title || "Video ôn tập"), h("span", {}, KT.lessonName(v.g + "-" + v.l, true)),
+        h("a", { href: v.url, target: "_blank", rel: "noopener" }, v.p === "yt" ? "Mở trên YouTube ↗" : "Mở trên TikTok ↗"));
+      side.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === cur));
+    };
+    list.forEach((v, i) => side.append(h("button", { type: "button", onclick: () => { cur = i; draw(); } },
+      h("span", { class: "vi" }, v.p === "yt" ? "▶" : "♪"), h("span", {}, h("b", {}, v.title || "Video " + (i + 1)), h("small", {}, KT.lessonName(v.g + "-" + v.l))))));
+    let close;
+    close = KT.modal([h("div", { class: "vhead" }, h("h3", {}, heading || "Video ôn tập"), h("button", { class: "btn ghost sm", onclick: () => close() }, "Đóng")),
+      h("div", { class: "vwrap" + (list.length > 1 ? "" : " one") }, h("div", {}, stage, cap), list.length > 1 ? side : null)], { wide: true });
+    draw();
+  };
+  KT.videoBtn = (list, heading, cls) => list && list.length ? h("button", { type: "button", class: cls || "btn ghost sm vbtn", onclick: () => KT.videoModal(list, heading) },
+    "▶ Video ôn" + (list.length > 1 ? " (" + list.length + ")" : "")) : null;
+
   KT.TERM_NAMES = { GK1: "Giữa học kì I", HK1: "Cuối học kì I", GK2: "Giữa học kì II", HK2: "Cuối học kì II" };
 
   /* các khuôn đề chuẩn */

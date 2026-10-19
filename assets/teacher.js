@@ -50,13 +50,70 @@
   function render() {
     stopPoll(); setWho(); app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["bank", "Ngân hàng câu hỏi"]];
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["videos", "Video ôn tập"], ["bank", "Ngân hàng câu hỏi"]];
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, bank: tabBank })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, videos: tabVideos, bank: tabBank })[tab](body);
   }
 
+
+  /* ---------------- VIDEO ÔN TẬP ---------------- */
+  let vidGrade = null;
+  async function tabVideos(el) {
+    const c0 = (ov.classes || [])[0];
+    if (vidGrade == null) vidGrade = c0 && CUR[c0.grade] ? c0.grade : (CUR[10] ? 10 : KT.GRADES[0]);
+    const gSel = h("select", { id: "vG" }, KT.GRADES.map((g) => h("option", { value: g, selected: g === vidGrade }, "Toán " + g)));
+    const lSel = h("select", { id: "vL" });
+    const fillL = () => { lSel.innerHTML = ""; CUR[+gSel.value].chapters.forEach((ch) => { const og = h("optgroup", { label: "Chương " + romans[ch.no] + ". " + ch.name });
+      ch.lessons.forEach((L) => og.append(h("option", { value: L.no }, "Bài " + L.no + ". " + L.name))); lSel.append(og); }); };
+    fillL();
+    const url = h("input", { id: "vU", type: "url", placeholder: "https://www.tiktok.com/@kenh/video/7688190213834788117" });
+    const title = h("input", { id: "vT", maxlength: 150, placeholder: "VD: Mệnh đề – lý thuyết trong 1 phút" });
+    const prev = h("div", { class: "vprev" });
+    let editId = null;
+    const parse = (u) => { let m = String(u).match(/tiktok\.com\/(?:@[^/?#]+\/video|embed(?:\/v2)?|player\/v1|v)\/(\d{8,25})/); if (m) return { p: "tt", vid: m[1] };
+      m = String(u).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/); return m ? { p: "yt", vid: m[1] } : null; };
+    const drawPrev = () => { prev.innerHTML = ""; const u = url.value.trim(); if (!u) return; const v = parse(u);
+      if (!v) { prev.append(h("div", { class: "note bad" }, /vt\.tiktok|vm\.tiktok/.test(u) ? "Đây là link rút gọn. Thầy mở link này trên trình duyệt máy tính rồi chép lại link đầy đủ (có dạng …tiktok.com/@kenh/video/số)." : "Chưa đọc được link. Dán link đầy đủ của video TikTok hoặc YouTube.")); return; }
+      prev.append(h("p", { class: "sub" }, "Xem trước:"), KT.videoFrame(Object.assign(v, { title: title.value }))); };
+    url.addEventListener("change", drawPrev); url.addEventListener("paste", () => setTimeout(drawPrev, 50));
+    const saveBtn = h("button", { class: "btn", onclick: async (e) => {
+      if (!parse(url.value.trim())) return drawPrev();
+      e.target.disabled = true;
+      try { const x = await T("t_video_save", { p_g: +gSel.value, p_l: +lSel.value, p_url: url.value.trim(), p_title: title.value.trim(), p_id: editId });
+        if (x.error) { KT.toast(x.error, "bad"); e.target.disabled = false; return; }
+        KT.toast(editId ? "Đã sửa video" : "Đã thêm video", "ok"); vidGrade = +gSel.value; el.innerHTML = ""; tabVideos(el); }
+      catch (ex) { e.target.disabled = false; fail(ex); }
+    } }, "Lưu video");
+    gSel.onchange = () => { fillL(); vidGrade = +gSel.value; drawList(); };
+    el.append(h("div", { class: "panel" }, h("h3", {}, "Thêm video ôn tập"),
+      h("p", { class: "sub" }, "Dán link video TikTok (hoặc YouTube) và chọn bài học. Video hiện cho học sinh ở thẻ “Theo bài”, trong bài bổ sung, ở phần phân tích kết quả (bài em còn yếu) và trong thư viện “Video ôn tập”. Video TikTok cần để Công khai và cho phép nhúng."),
+      h("div", { class: "form" }, h("div", {}, h("label", { for: "vG" }, "Khối"), gSel), h("div", {}, h("label", { for: "vL" }, "Bài học"), lSel),
+        h("div", { class: "full" }, h("label", { for: "vU" }, "Link video"), url), h("div", { class: "full" }, h("label", { for: "vT" }, "Tên video (học sinh sẽ thấy)"), title),
+        h("div", { class: "full" }, saveBtn)), prev));
+    const listBox = h("div", {}); el.append(listBox);
+    let all = [];
+    try { all = await api.rpc("videos_list", {}); } catch (e) { fail(e); }
+    function drawList() {
+      listBox.innerHTML = "";
+      const g = +gSel.value, mine = all.filter((v) => v.g === g);
+      const byG = {}; all.forEach((v) => (byG[v.g] = (byG[v.g] || 0) + 1));
+      listBox.append(h("div", { class: "section-t" }, "Video đã thêm · Toán " + g + " (" + mine.length + ")" + (all.length > mine.length ? " — tổng " + all.length + " video: " + Object.entries(byG).map(([k, n]) => "lớp " + k + ": " + n).join(", ") : "")));
+      if (!mine.length) { listBox.append(h("div", { class: "panel empty" }, "Khối này chưa có video nào.")); return; }
+      const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Bài", "Video", ""].map((x) => h("th", {}, x)))));
+      const body = h("tbody");
+      mine.forEach((v) => body.append(h("tr", {}, h("td", {}, KT.lessonName(v.g + "-" + v.l)),
+        h("td", {}, h("b", {}, v.title || "(chưa đặt tên)"), h("div", { class: "sub", style: "overflow-wrap:anywhere" }, (v.p === "yt" ? "YouTube · " : "TikTok · ") + v.url)),
+        h("td", { style: "white-space:nowrap" },
+          h("button", { class: "btn ghost sm", onclick: () => KT.videoModal([v], v.title || "Video") }, "Xem"), " ",
+          h("button", { class: "btn ghost sm", onclick: () => { editId = v.id; gSel.value = v.g; fillL(); lSel.value = v.l; url.value = v.url; title.value = v.title; drawPrev(); saveBtn.textContent = "Lưu thay đổi"; window.scrollTo({ top: 0, behavior: "smooth" }); } }, "Sửa"), " ",
+          h("button", { class: "btn ghost sm danger", onclick: () => KT.confirm("Xoá video này?", "Học sinh sẽ không thấy video này nữa (video trên TikTok không bị ảnh hưởng).", "Xoá", async () => {
+            try { await T("t_video_delete", { p_id: v.id }); all = all.filter((x) => x.id !== v.id); drawList(); KT.toast("Đã xoá", "ok"); } catch (e) { fail(e); } }) }, "Xoá")))));
+      tb.append(body); listBox.append(h("div", { class: "tbl-wrap" }, tb));
+    }
+    drawList();
+  }
 
   /* ---------------- CÂU BỊ BÁO LỖI ---------------- */
   let repStatus = "open";

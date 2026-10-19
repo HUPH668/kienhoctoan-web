@@ -7,6 +7,10 @@
   KT.initTheme(document.getElementById("themeBtn"));
 
   let sess = store.get("kt_stu", null);       // {token,name,code,class}
+  let vids = null;
+  const loadVids = () => vids ? Promise.resolve(vids) : api.rpc("videos_list", {}).then((v) => (vids = v || [])).catch(() => (vids = []));
+  // chỗ đặt nút video (điền sau khi tải danh sách video)
+  const vSlot = (keys, heading, cls) => { const s = h("span", { class: "vslot" }); loadVids().then((v) => { const b = KT.videoBtn(KT.videosFor(v, keys), heading, cls); if (b) s.append(b); }); return s; };
   let home = null, stats = null, lboard = null, fameTab = "week", grade = store.get("kt_grade", null);
   let cur = null;                              // bài đang làm (payload)
   let timerId = null, saveTimer = null, clockSkew = 0, dirty = new Set(), saving = false;
@@ -124,7 +128,7 @@
     stopTimers(); cur = null; setWho(); window.scrollTo(0, 0);
     app.innerHTML = ""; app.append(h("div", { class: "wrap loading" }, "Đang tải…"));
     try {
-      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null)]);
+      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null), loadVids()]);
       clockSkew = new Date(home.server_now).getTime() - Date.now();
       if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
     } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap empty" }, "Không tải được dữ liệu. ", h("button", { class: "btn sm", onclick: renderHome }, "Thử lại"))); return; }
@@ -343,8 +347,11 @@
       lsSel.append(og);
     }
     const f1 = [...lsSel.querySelectorAll("option")].find((o) => !o.disabled); if (f1) lsSel.value = f1.value;
+    const lsVid = h("div", { class: "vslot" });
+    const drawLsVid = () => { lsVid.innerHTML = ""; const k = g + "-" + lsSel.value, b = KT.videoBtn(KT.videosFor(vids, [k]), "Video ôn · " + KT.lessonName(k), "btn ghost vbtn"); if (b) lsVid.append(b); };
+    lsSel.addEventListener("change", drawLsVid); drawLsVid();
     cards.append(h("div", { class: "card" }, h("span", { class: "tag" }, "20 phút"), h("h3", {}, "Theo bài"), h("p", {}, g >= 10 ? "10 câu nhiều phương án, 2 đúng/sai, 2 trả lời ngắn." : "Khoảng 14 câu trắc nghiệm của một bài học."),
-      h("div", { class: "row stack" }, lsSel, h("button", { class: "btn", disabled: !f1, onclick: () => setup(B.lesson(g, +lsSel.value)) }, "Làm bài"))));
+      h("div", { class: "row stack" }, lsSel, h("button", { class: "btn", disabled: !f1, onclick: () => setup(B.lesson(g, +lsSel.value)) }, "Làm bài"), lsVid)));
     const chSel = h("select", { "aria-label": "Chọn chương" });
     d.chapters.forEach((ch) => { const n = cnt(KT.chapterLessons(g, ch.no)); chSel.append(h("option", { value: ch.no, disabled: n < 5 }, "Chương " + romans[ch.no] + ". " + ch.name + " (" + n + ")")); });
     const f2 = [...chSel.options].find((o) => !o.disabled); if (f2) chSel.value = f2.value;
@@ -361,6 +368,10 @@
       h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.tn()) }, "Thi thử"))));
     if (g >= 10) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "60 phút · 30 câu"), h("h3", {}, "Đánh giá năng lực"), h("p", {}, "Nhiều câu, thời gian ngắn, kiến thức lớp 10–12."),
       h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.dgnl()) }, "Thi thử"))));
+    const gv = (vids || []).filter((v) => v.g === g);
+    if (gv.length) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, gv.length + " video"), h("h3", {}, "Video ôn tập"),
+      h("p", {}, "Video thầy giảng lại kiến thức các bài Toán " + g + ". Xem lại trước khi làm bài."),
+      h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => videoLibrary(g) }, "Xem video"))));
     const agg = KT.aggMastery(home.mastery, g);
     const weak = agg.lessons.filter((x) => x.w >= 2 && x.m < 0.8).sort((a, b) => a.m - b.m).slice(0, 3);
     cards.append(h("div", { class: "card" + (weak.length ? "" : " disabled") }, h("span", { class: "tag" }, "Cá nhân hoá"), h("h3", {}, "Bài cải thiện"),
@@ -372,6 +383,23 @@
     const g = +keys[0].split("-")[0], one = keys.length === 1;
     return Object.assign({ kind: "Bài cải thiện", grade: g, title: one ? "Luyện tập cải thiện · " + KT.lessonName(keys[0]) : "Bài cải thiện tổng hợp · " + keys.map((k) => "B" + LESSON[k].l).join(", ") + " (Toán " + g + ")",
       lessons: keys, counts: one ? { MC: 8, TF: 2, SA: 2 } : { MC: 10, TF: 3, SA: 3 }, minutes: one ? 20 : 30, prefer_wrong: true }, extra || {});
+  }
+
+  /* ---------------- thư viện video của một khối ---------------- */
+  function videoLibrary(g) {
+    const gv = (vids || []).filter((v) => v.g === g);
+    const box = h("div", {});
+    for (const ch of CUR[g].chapters) {
+      const items = gv.filter((v) => ch.lessons.some((L) => L.no === v.l));
+      if (!items.length) continue;
+      box.append(h("h4", { class: "vch" }, "Chương " + romans[ch.no] + ". " + ch.name));
+      const grid = h("div", { class: "vgrid" });
+      items.forEach((v) => grid.append(h("button", { type: "button", class: "vcard", onclick: () => { close(); KT.videoModal(items, "Chương " + romans[ch.no] + ". " + ch.name); } },
+        h("span", { class: "vi" }, "▶"), h("span", {}, h("b", {}, v.title || "Video ôn tập"), h("small", {}, KT.lessonName(v.g + "-" + v.l))))));
+      box.append(grid);
+    }
+    let close;
+    close = KT.modal([h("div", { class: "vhead" }, h("h3", {}, "Video ôn tập · Toán " + g), h("button", { class: "btn ghost sm", onclick: () => close() }, "Đóng")), box], { wide: true });
   }
 
   /* ---------------- cấu hình đề tự luyện ---------------- */
@@ -481,7 +509,8 @@
     home.remedials.forEach((r) => box.append(h("div", { class: "rb-item" },
       h("div", { class: "tx" }, h("b", {}, "Củng cố: " + remNames(r).join("; ")),
         h("span", {}, "Từ bài: " + (r.src_title || "") + (r.src_score != null ? " · " + fmt(r.src_score) + " điểm" : "") + " · " + KT.dt(r.created_at))),
-      h("button", { class: "btn acc sm", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung"))));
+      h("div", { class: "rb-acts" }, vSlot(r.lessons || [], "Video ôn trước khi làm bài bổ sung"),
+        h("button", { class: "btn acc sm", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung")))));
     return box;
   }
   function remedialCard(r, p) {
@@ -494,7 +523,8 @@
       h("div", { class: "tx" }, h("h3", {}, "Bài bổ sung bắt buộc"),
         h("p", {}, "Em đang yếu: ", h("b", {}, names.join("; ")), ". Thầy giao khoảng 10 câu mức nhận biết – thông hiểu của " + (names.length > 1 ? "các bài này" : "bài này") + " (20 phút) để em củng cố."),
         h("p", { class: "muted" }, retake ? "Em cần hoàn thành bài bổ sung trước khi làm lại bài kiểm tra." : "Bài kiểm tra này đã hết lượt làm, nhưng em vẫn nên làm bài bổ sung để không bị hổng kiến thức.")),
-      h("button", { class: "btn acc", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung ngay"));
+      h("div", { class: "rb-acts" }, vSlot(r.lessons || [], "Xem video ôn trước khi làm bài bổ sung", "btn ghost vbtn"),
+        h("button", { class: "btn acc", onclick: () => startRemedial(r.id) }, r.doing ? "Làm tiếp" : "Làm bài bổ sung ngay")));
   }
   function remDoneBlock(p) {
     const r = p.remedial_of;
@@ -658,7 +688,16 @@
     const lRows = Object.entries(ev.byL).map(([k, v]) => ({ label: KT.lessonName(k, multiG0), m: v.m / v.w, sub: v.ok + "/" + v.n + " câu đúng hoàn toàn" })).sort((a, b) => a.m - b.m);
     if (lRows.length) {
       w.append(h("div", { class: "section-t" }, "Phân tích theo bài học"));
-      w.append(h("div", { class: "panel" }, h("p", { class: "muted", style: "margin:0 0 10px" }, "Tỉ lệ điểm em đạt được ở từng bài trong đề này (bài yếu nhất ở trên)."), KT.hbars(lRows), KT.statusLegend()));
+      const vbox = h("div", {});
+      w.append(h("div", { class: "panel" }, h("p", { class: "muted", style: "margin:0 0 10px" }, "Tỉ lệ điểm em đạt được ở từng bài trong đề này (bài yếu nhất ở trên)."), KT.hbars(lRows), KT.statusLegend(), vbox));
+      const weakKeys = Object.entries(ev.byL).filter(([, v]) => v.m / v.w < 0.8).sort((a, b) => a[1].m / a[1].w - b[1].m / b[1].w).map(([k]) => k);
+      loadVids().then((v) => {
+        const chips = weakKeys.map((k) => { const list = KT.videosFor(v, [k]); if (!list.length) return null;
+          return h("button", { type: "button", class: "btn ghost sm vbtn", onclick: () => KT.videoModal(list, "Video ôn · " + KT.lessonName(k, multiG0)) },
+            "▶ " + (multiG0 ? "Lớp " + k.split("-")[0] + " · " : "") + "Bài " + k.split("-")[1] + (list.length > 1 ? " (" + list.length + " video)" : "")); }).filter(Boolean);
+        if (!chips.length) return;
+        vbox.append(h("div", { class: "vtip" }, h("b", {}, "Xem lại video bài em còn yếu:"), h("div", { class: "vchips" }, chips)));
+      });
     }
     if (p.remedial) w.append(remedialCard(p.remedial, p));
 
