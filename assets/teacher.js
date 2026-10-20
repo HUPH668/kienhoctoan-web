@@ -296,6 +296,51 @@
     el.append(h("div", { class: "tbl-wrap", style: "margin-top:14px" }, tb));
   }
 
+  // gia hạn cả bài: giờ đóng mới, số lần làm, cho em đang làm dở đủ thời gian
+  function extendDlg(a, now, after) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const local = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    const base = Math.max(new Date(a.closes_at).getTime(), now);
+    const inp = h("input", { type: "datetime-local", id: "exT", style: "max-width:260px", value: local(new Date(base + 30 * 60000)) });
+    const quick = [["+10 phút", 10], ["+30 phút", 30], ["+1 giờ", 60], ["+1 ngày", 1440], ["+3 ngày", 4320], ["+1 tuần", 10080]].map(([l, m]) =>
+      h("button", { type: "button", class: "btn ghost sm", onclick: () => (inp.value = local(new Date(base + m * 60000))) }, l));
+    const max = h("input", { type: "number", id: "exM", min: 1, max: 50, value: a.max_attempts || 1, style: "max-width:120px" });
+    const doing = h("input", { type: "checkbox", id: "exD", checked: true });
+    let close;
+    close = KT.modal([h("h3", {}, "Gia hạn bài kiểm tra"),
+      h("p", {}, h("b", {}, a.title), h("br"), "Hiện đóng lúc ", h("b", {}, KT.dt(a.closes_at)), new Date(a.closes_at).getTime() <= now ? " (đã đóng — gia hạn sẽ mở lại bài)" : ""),
+      h("label", { for: "exT" }, "Đóng bài lúc"), inp, h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px" }, quick),
+      h("label", { for: "exM" }, "Số lần mỗi em được làm"), max,
+      h("p", { class: "sub", style: "margin:4px 0 10px" }, "Tăng số lần nếu muốn các em đã nộp (hoặc bị thu bài khi hết giờ) được làm lại."),
+      h("label", { class: "chk" }, doing, "Các em đang làm dở được làm đủ " + (a.blueprint && a.blueprint.minutes || "") + " phút (nếu trước đó bị cắt vì sắp đóng bài)"),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async (e) => {
+          const t = new Date(inp.value);
+          if (isNaN(t)) return KT.toast("Chọn giờ đóng bài.", "bad");
+          e.target.disabled = true;
+          try { const r = await T("t_assignment_extend", { p_id: a.id, p_closes: t.toISOString(), p_max: +max.value || null, p_extend_doing: doing.checked });
+            if (r.error) { e.target.disabled = false; return KT.toast(r.error, "bad"); }
+            close(); KT.toast("Đã gia hạn đến " + KT.dt(r.closes_at) + (r.doing ? " · " + r.doing + " em đang làm được cập nhật giờ" : ""), "ok"); after(true); }
+          catch (ex) { e.target.disabled = false; fail(ex); }
+        } }, "Gia hạn"))]);
+  }
+  // cộng giờ cho một em đang làm
+  function addTime(r, after) {
+    const mins = h("input", { type: "number", id: "atM", min: 1, max: 240, value: 10, style: "max-width:120px" });
+    let close;
+    close = KT.modal([h("h3", {}, "Cộng giờ cho " + r.name),
+      h("p", {}, "Em đang làm, hết giờ lúc ", h("b", {}, KT.dt(r.ends_at)), ". Đồng hồ trên máy em sẽ tự cập nhật trong vòng 1 phút."),
+      h("label", { for: "atM" }, "Cộng thêm (phút)"), mins,
+      h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin:8px 0" }, [5, 10, 15, 30].map((m) => h("button", { type: "button", class: "btn ghost sm", onclick: () => (mins.value = m) }, "+" + m + " phút"))),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async (e) => {
+          e.target.disabled = true;
+          try { const x = await T("t_attempt_extend", { p_attempt: r.attempt, p_minutes: +mins.value });
+            if (x.error) { e.target.disabled = false; return KT.toast(x.error, "bad"); }
+            close(); KT.toast("Đã cộng " + mins.value + " phút · hết giờ lúc " + KT.dt(x.ends_at), "ok"); after(); }
+          catch (ex) { e.target.disabled = false; fail(ex); }
+        } }, "Cộng giờ"))]);
+  }
   async function monitorView(el, id) {
     el.append(h("div", { class: "loading" }, "Đang tải…"));
     let m, rep;
@@ -320,7 +365,7 @@
       el.append(h("p", { class: "sub", style: "margin:6px 0 12px" }, "Lớp " + a.class + " · " + a.kind + " · " + (a.blueprint.minutes) + " phút · " + KT.bpScope(a.blueprint) + " · tự cập nhật mỗi 5 giây"));
       el.append(h("div", { class: "row noprint", style: "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" },
         open ? h("button", { class: "btn acc sm", onclick: () => KT.confirm("Đóng bài và thu bài?", "Các em đang làm sẽ được nộp ngay với những câu đã trả lời.", "Thu bài", async () => { await T("t_assignment_update", { p_id: id, p_closes: new Date().toISOString() }).catch(fail); refresh(true); }) }, "Thu bài ngay") : null,
-        h("button", { class: "btn ghost sm", onclick: async () => { await T("t_assignment_update", { p_id: id, p_closes: new Date(Math.max(cl, now) + 10 * 60000).toISOString() }).catch(fail); KT.toast("Đã gia hạn thêm 10 phút", "ok"); refresh(); } }, "Gia hạn +10 phút"),
+        h("button", { class: "btn " + (open ? "ghost" : "") + " sm", onclick: () => extendDlg(a, now, refresh) }, open ? "Gia hạn…" : "Gia hạn / mở lại bài"),
         h("button", { class: "btn ghost sm", onclick: async () => { await T("t_assignment_update", { p_id: id, p_show: !a.show_answers }).catch(fail); refresh(); } }, a.show_answers ? "Ẩn đáp án với HS" : "Cho HS xem đáp án"),
         h("button", { class: "btn ghost sm", onclick: () => exportScores(a, rows) }, "Xuất bảng điểm (Excel)"),
         h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá bài này?", "Xoá bài giao và <b>toàn bộ bài làm</b> của học sinh. Không thể hoàn tác.", "Xoá", async () => { await T("t_assignment_update", { p_id: id, p_delete: true }).catch(fail); curAsg = null; load(); }) }, "Xoá")));
@@ -344,7 +389,8 @@
           h("td", {}, r.n_items ? [h("span", { class: "prog-mini" }, h("i", { style: "width:" + pct(r.n_answered / r.n_items) + "%" })), r.n_answered + "/" + r.n_items] : "–"),
           h("td", { class: "num" }, r.status === "done" ? h("b", {}, fmt(r.score)) : "–"),
           h("td", {}, r.started_at ? KT.dt(r.started_at) : "–"), h("td", {}, r.submitted_at ? KT.dt(r.submitted_at) : "–"),
-          h("td", {}, r.attempt ? h("span", { style: "color:var(--brand);font-size:13px" }, "Xem bài →") : "")));
+          h("td", { style: "white-space:nowrap" }, r.status === "doing" ? h("button", { class: "btn ghost sm", title: "Cộng thêm thời gian cho riêng em này", onclick: (e) => { e.stopPropagation(); addTime(r, refresh); } }, "+ Cộng giờ") : null,
+            r.attempt ? h("span", { style: "color:var(--brand);font-size:13px;margin-left:8px" }, "Xem bài →") : "")));
       });
       tb.append(tbody);
       el.append(h("div", { class: "section-t" }, "Tình hình từng học sinh"), h("div", { class: "tbl-wrap" }, tb));

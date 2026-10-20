@@ -25,7 +25,11 @@
     if (sess) api.rpc("student_logout", { p_token: sess.token }).catch(() => { });
     sess = null; store.del("kt_stu"); stopTimers(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
-  function stopTimers() { clearInterval(timerId); timerId = null; clearTimeout(saveTimer); }
+  let beatId = null, examEnd = 0;
+  function stopTimers() { clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; }
+  const takeEnd = (r) => { if (r && r.ends_at && cur) { cur.ends_at = r.ends_at; examEnd = new Date(r.ends_at).getTime(); } };
+  // hỏi máy chủ giờ hết hạn (thầy có thể vừa cộng giờ / gia hạn)
+  async function beat() { if (!cur || cur.status !== "doing") return null; try { const r = await rpc("save_answers", { p_attempt: cur.id, p_answers: [] }); takeEnd(r); return r; } catch (e) { return null; } }
   function setWho() {
     who.innerHTML = "";
     if (!sess) return;
@@ -574,6 +578,7 @@
     setSave("Đang lưu…");
     try {
       const r = await rpc("save_answers", { p_attempt: cur.id, p_answers: payload });
+      takeEnd(r);
       setSave("Đã lưu ✓", "ok");
       const b = store.get(localKey(), {}); idxs.forEach((i) => { if (!dirty.has(i)) delete b[i]; }); store.set(localKey(), b);
     } catch (e) {
@@ -616,15 +621,20 @@
     };
     app.append(head, h("div", { class: "wrap exam-grid" }, h("div", {}, list), nav));
     updNav(); KT.typeset(app, cur.figs);
-    const end = new Date(cur.ends_at).getTime();
-    const tick = () => {
-      const left = Math.max(0, end - (Date.now() + clockSkew));
+    examEnd = new Date(cur.ends_at).getTime();
+    let checking = false;
+    const tick = async () => {
+      const left = Math.max(0, examEnd - (Date.now() + clockSkew));
       const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
       timerEl.textContent = String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
       timerEl.classList.toggle("low", left < 5 * 60000);
-      if (left <= 0) { stopTimers(); submit(true); }
+      if (left <= 0 && !checking) {
+        checking = true; const before = examEnd; await beat(); checking = false;   // hỏi lại lần cuối: có thể thầy vừa cộng giờ
+        if (examEnd > before && examEnd - (Date.now() + clockSkew) > 0) return;
+        stopTimers(); submit(true);
+      }
     };
-    tick(); timerId = setInterval(tick, 1000);
+    tick(); timerId = setInterval(tick, 1000); beatId = setInterval(beat, 45000);
   }
   function askSubmit() {
     const miss = cur.items.filter((it) => KT.answered(it) < 2).length;
