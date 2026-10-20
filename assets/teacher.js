@@ -638,10 +638,35 @@
     box.append(h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px" },
       h("button", { class: "btn sm", onclick: () => printCards(cname, sts) }, "In phiếu đăng nhập"),
       h("button", { class: "btn ghost sm", onclick: () => download("DanhSach_" + cname + ".csv", [["Mã HS", "Họ tên", "PIN"]].concat(sts.map((s) => [s.code, s.name, "'" + s.pin]))) }, "Xuất danh sách (Excel)")));
-    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Mã HS", "Họ tên", "Cấp", "PIN", "Trạng thái", ""].map((x) => h("th", {}, x)))));
+    // chuyển lớp (một em hoặc nhiều em đã tích chọn)
+    const picked = new Set();
+    const others = ov.classes.filter((c) => c.id !== curClass);
+    const moveDlg = (list) => {
+      if (!others.length) return KT.toast("Chưa có lớp khác. Tạo lớp mới ở trên trước.", "bad");
+      const to = h("select", { id: "mvTo", style: "width:100%;margin-bottom:6px" }, others.map((c) => h("option", { value: c.id }, c.name + " (khối " + (c.grade || "?") + ", " + c.n + " HS)")));
+      let close;
+      close = KT.modal([h("h3", {}, list.length === 1 ? "Chuyển lớp cho " + list[0].name : "Chuyển " + list.length + " học sinh sang lớp khác"),
+        h("p", {}, "Từ lớp ", h("b", {}, cname), ". Mã học sinh, PIN, bài đã làm và điểm kinh nghiệm được giữ nguyên; em sẽ thấy các bài giao của lớp mới."),
+        list.length > 1 ? h("p", { class: "sub" }, list.map((x) => x.name).join(", ")) : null,
+        h("label", { for: "mvTo" }, "Chuyển sang lớp"), to,
+        h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+          h("button", { class: "btn", onclick: async (e) => {
+            e.target.disabled = true;
+            try { const r = await T("t_student_move", { p_ids: list.map((x) => x.id), p_class: +to.value });
+              if (r.error) { e.target.disabled = false; return KT.toast(r.error, "bad"); }
+              close(); KT.toast("Đã chuyển " + r.n + " học sinh sang lớp " + to.selectedOptions[0].text.split(" (")[0], "ok"); ov = await T("t_overview"); render(); }
+            catch (ex) { e.target.disabled = false; fail(ex); }
+          } }, "Chuyển lớp"))]);
+    };
+    const bulkBtn = h("button", { class: "btn sm", disabled: true, onclick: () => moveDlg(sts.filter((x) => picked.has(x.id))) }, "Chuyển lớp các em đã chọn");
+    const syncBulk = () => { bulkBtn.disabled = !picked.size; bulkBtn.textContent = picked.size ? "Chuyển lớp " + picked.size + " em đã chọn" : "Chuyển lớp các em đã chọn"; };
+    const allCb = h("input", { type: "checkbox", "aria-label": "Chọn tất cả", onchange: () => { tbody.querySelectorAll("input.pick").forEach((cb) => { cb.checked = allCb.checked; cb.dispatchEvent(new Event("change")); }); } });
+    box.lastChild.append(bulkBtn);
+    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, allCb), ["Mã HS", "Họ tên", "Cấp", "PIN", "Trạng thái", ""].map((x) => h("th", {}, x)))));
     const tbody = h("tbody");
     const act = async (s, args, msg) => { try { await T("t_student_update", Object.assign({ p_id: s.id }, args)); if (msg) KT.toast(msg, "ok"); render(); } catch (e) { fail(e); } };
-    sts.forEach((s) => tbody.append(h("tr", {}, h("td", { class: "mono" }, s.code), h("td", {}, s.name),
+    sts.forEach((s) => tbody.append(h("tr", {}, h("td", {}, h("input", { type: "checkbox", class: "pick", "aria-label": "Chọn " + s.name, onchange: (e) => { (e.target.checked ? picked.add(s.id) : picked.delete(s.id)); syncBulk(); }, "data-id": s.id })),
+      h("td", { class: "mono" }, s.code), h("td", {}, s.name),
       h("td", {}, h("span", { class: "lvcell" }, KT.levelBadge(KT.lvOf(s.xp), "xs"), KT.titleOf(KT.lvOf(s.xp)) + " · " + KT.num(s.xp) + " KN", s.hide_rank ? h("span", { class: "pill", title: "Không hiện trên bảng vinh danh" }, "Ẩn") : null)),
       h("td", { class: "mono" }, s.pin),
       h("td", {}, s.failed >= 10 ? h("span", { class: "pill bad" }, "Bị khoá") : !s.active ? h("span", { class: "pill" }, "Ngừng") : h("span", { class: "pill ok" }, "Hoạt động")),
@@ -650,6 +675,7 @@
         h("button", { class: "btn ghost sm", onclick: () => act(s, { p_reset_pin: true }, "Đã đổi PIN") }, "Đổi PIN"),
         h("button", { class: "btn ghost sm", title: "Hiện/ẩn tên em này trên bảng vinh danh", onclick: () => act(s, { p_hide_rank: !s.hide_rank }, s.hide_rank ? "Đã hiện lại trên bảng vinh danh" : "Đã ẩn khỏi bảng vinh danh") }, s.hide_rank ? "Hiện vinh danh" : "Ẩn vinh danh"),
         h("button", { class: "btn ghost sm", onclick: () => { const n = prompt("Sửa họ tên", s.name); if (n) act(s, { p_name: n }); } }, "Sửa tên"),
+        h("button", { class: "btn ghost sm", onclick: () => moveDlg([s]) }, "Chuyển lớp"),
         h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá học sinh?", "Xoá <b>" + esc(s.name) + "</b> và các bài làm của em này.", "Xoá", () => act(s, { p_delete: true })) }, "Xoá"))))));
     tb.append(tbody);
     box.append(h("div", { class: "tbl-wrap" }, tb));
