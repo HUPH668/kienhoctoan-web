@@ -64,7 +64,7 @@
   KT.videoModal = (list, heading) => {
     if (!list || !list.length) return;
     let cur = 0;
-    const stage = h("div", { class: "vstage" }), cap = h("div", { class: "vcap" }), side = h("div", { class: "vlist" });
+    const stage = h("div", { class: "vstage" }), cap = h("div", { class: "vcap" }), side = h("div", { class: "vidlist" });
     const draw = () => {
       const v = list[cur]; stage.innerHTML = ""; stage.append(KT.videoFrame(v));
       cap.innerHTML = ""; cap.append(h("b", {}, v.title || "Video ôn tập"), h("span", {}, KT.lessonName(v.g + "-" + v.l, true)),

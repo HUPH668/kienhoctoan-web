@@ -679,12 +679,12 @@ td .pill + .pill{margin-left:4px}
 .vcap{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:13.5px;text-align:center}
 .vcap span{color:var(--ink-3)}
 .vcap a{color:var(--brand);font-weight:650}
-.vlist{display:grid;gap:6px;max-height:min(62vh,600px);overflow:auto}
-.vlist button{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px;color:var(--ink);cursor:pointer}
-.vlist button.on{border-color:var(--brand);background:var(--brand-soft)}
-.vlist button b{display:block;font-size:13.5px}
-.vlist button small{color:var(--ink-3);font-size:12px}
-.vlist .vi{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-size:12px}
+.vidlist{display:grid;gap:6px;max-height:min(62vh,600px);overflow:auto}
+.vidlist button{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px;color:var(--ink);cursor:pointer}
+.vidlist button.on{border-color:var(--brand);background:var(--brand-soft)}
+.vidlist button b{display:block;font-size:13.5px}
+.vidlist button small{color:var(--ink-3);font-size:12px}
+.vidlist .vi{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-size:12px}
 .vbtn{white-space:nowrap}
 .vchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
@@ -693,7 +693,7 @@ td .pill + .pill{margin-left:4px}
 .vcard .vi{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:#fff}
 .vcard b{display:block;font-size:14px}
 .vcard small{color:var(--ink-3)}
-@media (max-width:720px){.vwrap{grid-template-columns:1fr}.vlist{max-height:none}}
+@media (max-width:720px){.vwrap{grid-template-columns:1fr}.vidlist{max-height:none}}
 .rb-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
 .remcard .rb-acts{flex:none}
 .vslot:empty{display:none}
