@@ -701,3 +701,14 @@ td .pill + .pill{margin-left:4px}
 .vch{margin:16px 0 8px;font-size:14px;color:var(--ink-2)}
 .vprev{margin-top:12px}
 .vprev .vframe{max-width:260px;margin:0}
+
+/* ---------- thi thử ĐGNL: đoạn văn / bảng số liệu dùng chung ---------- */
+.part-big{font-weight:800;font-size:18px;margin:28px 0 4px;padding:10px 14px;border-radius:10px;background:var(--surface-2);border-left:4px solid var(--accent)}
+.passage{margin:12px 0 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface-2);overflow:hidden}
+.passage .ps-h{font-size:13px;font-weight:700;color:var(--ink-3);padding:8px 14px;border-bottom:1px solid var(--line-2);text-transform:uppercase;letter-spacing:.03em}
+.passage .ps-b{padding:12px 16px;line-height:1.65;overflow-x:auto}
+.passage ul,.passage ol{margin:6px 0;padding-left:22px}
+table.tb{border-collapse:collapse;margin:8px auto;font-size:14.5px}
+table.tb td{border:1px solid var(--line-2);padding:5px 10px;text-align:center;vertical-align:middle}
+table.tb tr:first-child td{font-weight:700;background:var(--surface)}
+.card.dgnl .row.stack select{min-width:0}

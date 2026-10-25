@@ -41,7 +41,7 @@
   const LESSON = (KT.LESSON = {});
   for (const [g, d] of Object.entries(CUR)) for (const ch of d.chapters) for (const ls of ch.lessons)
     LESSON[g + "-" + ls.no] = { g: +g, l: ls.no, name: ls.name, c: ch.no, cname: ch.name };
-  KT.lessonName = (key, withGrade) => { const L = LESSON[key]; if (!L) return key; return (withGrade ? "Lớp " + L.g + " · " : "") + "Bài " + L.l + ". " + L.name; };
+  KT.lessonName = (key, withGrade) => { const L = LESSON[key]; if (!L) return /^0-/.test(key) ? "Thi thử ĐGNL" : key; return (withGrade ? "Lớp " + L.g + " · " : "") + "Bài " + L.l + ". " + L.name; };
   KT.lessonsOf = (g) => Object.keys(LESSON).filter((k) => LESSON[k].g === +g);
   KT.lessonsInRange = (g, a, b) => KT.lessonsOf(g).filter((k) => LESSON[k].l >= a && LESSON[k].l <= b);
   KT.chapterLessons = (g, c) => KT.lessonsOf(g).filter((k) => LESSON[k].c === +c);
@@ -97,7 +97,25 @@
     dgnl: () => ({ kind: "Đánh giá năng lực", grade: 12, title: "Đề luyện thi Đánh giá năng lực · Toán", lessons: [10, 11, 12].flatMap(KT.lessonsOf), counts: { MC: 24, TF: 0, SA: 6 }, minutes: 60,
       weights: { MC: 1, TF: 4, SA: 1 }, mix: [{ g: 12, share: 0.4 }, { g: 11, share: 0.3 }, { g: 10, share: 0.3 }] }),
   };
+  /* thi thử đánh giá năng lực ĐHQG-HCM (cấu trúc 2026: 120 câu, 150 phút) */
+  KT.DGNL = { exam: "DGNL_HCM", name: "ĐGNL ĐHQG-HCM", minutes: 150, secs: [
+    { k: "TV", part: "Phần 1. Sử dụng ngôn ngữ", name: "Tiếng Việt", n: 30 },
+    { k: "TA", part: "Phần 1. Sử dụng ngôn ngữ", name: "Tiếng Anh", n: 30 },
+    { k: "TOAN", part: "Phần 2. Toán học", name: "Toán học", n: 30 },
+    { k: "LOGIC", part: "Phần 3. Tư duy khoa học", name: "Logic, phân tích số liệu", n: 12 },
+    { k: "KH", part: "Phần 3. Tư duy khoa học", name: "Suy luận khoa học", n: 18 }] };
+  KT.dgnlSec = (k) => KT.DGNL.secs.find((x) => x.k === k) || { k, part: "", name: k, n: 0 };
+  KT.blueprint.dgnlFull = () => ({ exam: KT.DGNL.exam, kind: "Thi thử ĐGNL", grade: 12, title: "Thi thử Đánh giá năng lực ĐHQG-HCM",
+    parts: KT.DGNL.secs.map((x) => ({ k: x.k, n: x.n })), counts: { MC: 120, TF: 0, SA: 0 }, minutes: KT.DGNL.minutes });
+  KT.blueprint.dgnlPart = (k) => { const x = KT.dgnlSec(k); return { exam: KT.DGNL.exam, kind: "Luyện ĐGNL", grade: 12, title: "Luyện ĐGNL · " + x.name,
+    parts: [{ k, n: x.n }], counts: { MC: x.n, TF: 0, SA: 0 }, minutes: Math.max(10, Math.round(x.n * 1.25)) }; };
+  /** khối đoạn văn / bảng số liệu dùng chung cho một nhóm câu */
+  KT.passageBlock = (html, from, to) => h("div", { class: "passage" },
+    h("div", { class: "ps-h" }, from === to ? "Dùng cho câu " + from : "Dùng cho câu " + from + " – " + to), h("div", { class: "ps-b", html: html || "" }));
+  /** chèn khối đoạn văn trước câu đầu tiên của mỗi nhóm; items: danh sách câu đang hiện (theo số thứ tự gốc) */
+  KT.groupRange = (items) => { const r = {}; items.forEach((it, i) => { if (!it.grp) return; (r[it.grp] = r[it.grp] || [i + 1, i + 1]); r[it.grp][1] = i + 1; }); return r; };
   KT.bpScope = (bp) => {
+    if (bp.exam) return (bp.parts || []).map((x) => KT.dgnlSec(x.k).name + " " + x.n + " câu").join(" · ");
     if (bp.tags && bp.tags.length) return "ID " + bp.tags.slice(0, 6).join(", ") + (bp.tags.length > 6 ? "…" : "");
     const ls = bp.lessons || [];
     if (ls.length === 1) return KT.lessonName(ls[0], true);
@@ -245,7 +263,7 @@
     const L = {}, Lv = {}, T = {};
     const add = (o, k, m, w) => { (o[k] = o[k] || { m: 0, w: 0 }); o[k].m += +m; o[k].w += +w; };
     for (const r of rows || []) {
-      if (gFilter && r.g !== gFilter) continue;
+      if (!r.g || (gFilter && r.g !== gFilter)) continue;   // bỏ câu ĐGNL (không thuộc bài Toán nào)
       add(L, r.g + "-" + r.l, r.m, r.w); add(Lv, r.lv, r.m, r.w); add(T, r.t, r.m, r.w);
     }
     return { lessons: Object.entries(L).map(([key, v]) => ({ key, m: v.w ? v.m / v.w : 0, w: v.w })), levels: Lv, types: T };
@@ -296,7 +314,7 @@
   KT.qBlock = (it, num, mode, onChange, opt = {}) => {
     const box = h("article", { class: "q", id: "q" + num });
     const head = h("div", { class: "qh" }, h("span", { class: "qn" }, "Câu " + (num + 1) + "."),
-      h("span", { class: "lvl", title: "Mức độ" + (it.lg ? " (ước lượng)" : "") }, KT.LV[it.lv] + (it.lg ? "*" : "")),
+      it.sec ? h("span", { class: "lvl" }, KT.dgnlSec(it.sec).name) : h("span", { class: "lvl", title: "Mức độ" + (it.lg ? " (ước lượng)" : "") }, KT.LV[it.lv] + (it.lg ? "*" : "")),
       it.rv ? h("span", { class: "lvl rvtag", title: "Câu cùng dạng với câu em từng làm sai" }, "Ôn lại") : null);
     if (mode === "exam") {
       const fb = h("button", { class: "flag" + (it.flag ? " on" : ""), type: "button", onclick: () => { it.flag = !it.flag; fb.classList.toggle("on", it.flag); fb.textContent = it.flag ? "★ Đã đánh dấu" : "☆ Đánh dấu"; onChange && onChange(it, true); } }, it.flag ? "★ Đã đánh dấu" : "☆ Đánh dấu");
@@ -368,16 +386,18 @@
 
   /** thống kê một bài đã chấm (payload có m,w,status) */
   KT.evalPayload = (p) => {
-    const byL = {}, byLv = {}, byT = {};
+    const byL = {}, byLv = {}, byT = {}, bySec = {};
     const add = (o, k, m, w, ok) => { (o[k] = o[k] || { m: 0, w: 0, n: 0, ok: 0 }); o[k].m += m * w; o[k].w += w; o[k].n++; if (ok) o[k].ok++; };
     let U = 0, M = 0;
     for (const it of p.items) { U += +it.u || 0; M += +it.w || 0; }
     for (const it of p.items) {
       const w = KT.W_STD[it.t], m = +it.m || 0;
-      add(byL, it.g + "-" + it.l, m, w, it.status === "ok"); add(byLv, it.lv, m, w); add(byT, it.t, m, w);
+      if (it.g) add(byL, it.g + "-" + it.l, m, w, it.status === "ok");
+      if (it.sec) add(bySec, it.sec, m, 1, it.status === "ok");
+      if (it.g || !it.sec) { add(byLv, it.lv, m, w); add(byT, it.t, m, w); }
       it.pts = [10 * (+it.u || 0) / (M || 1), 10 * (+it.w || 0) / (M || 1)];
     }
-    return { byL, byLv, byT, U, M };
+    return { byL, byLv, byT, bySec, U, M };
   };
   /* ---------------- thương hiệu ---------------- */
   KT.BRAND = { name: CFG.SCHOOL || "Kiến Học Toán", teacher: CFG.TEACHER || "", phone: String(CFG.PHONE || "").replace(/\D/g, "") };

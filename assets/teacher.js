@@ -243,7 +243,7 @@
     box.append(h("div", { class: "st-grid" },
       h("div", { class: "panel" }, h("h3", {}, "Phân bố điểm"), h("p", { class: "muted" }, "Số bài theo từng mức điểm."), KT.histo(d.scores || [])),
       h("div", { class: "panel" }, h("h3", {}, "Điểm trung bình theo tuần"), h("p", { class: "muted" }, "Xu hướng của cả lớp."), KT.lineChart(wk, { label: "Điểm trung bình theo tuần" }))));
-    const lessons = (d.lessons || []).slice().sort((a, b) => a.m - b.m);
+    const lessons = (d.lessons || []).filter((x) => !/^0-/.test(x.key)).sort((a, b) => a.m - b.m);
     const mlv = { NB: "Nhận biết", TH: "Thông hiểu", VD: "Vận dụng", VDC: "Vận dụng cao" };
     const lvRows = ["NB", "TH", "VD", "VDC"].map((k) => (d.levels || []).find((x) => x.lv === k)).filter(Boolean).map((x) => ({ label: mlv[x.lv], m: +x.m, sub: x.n + " lượt câu" }));
     const tRows = ["MC", "TF", "SA"].map((k) => (d.types || []).find((x) => x.t === k)).filter(Boolean).map((x) => ({ label: TYPES[x.t], m: +x.m, sub: x.n + " lượt câu" }));
@@ -264,7 +264,7 @@
       h("td", {}, r.code), h("td", {}, h("b", {}, r.name)), h("td", { class: "num" }, String(r.n)),
       h("td", { class: "num" }, r.avg == null ? "—" : h("span", { class: "sc-pill " + (r.avg >= 8 ? "ok" : r.avg >= 5 ? "warn" : "bad") }, fmt(r.avg))),
       h("td", {}, KT.spark(r.trend || [])),
-      h("td", { class: "weakcell" }, (r.weak || []).length ? (r.weak || []).map((x) => h("span", { class: "wk", title: KT.lessonName(x.key, true) }, "B" + x.key.split("-")[1] + " · " + pct(x.m) + "%")) : h("span", { class: "muted" }, r.n ? "Không có" : "—")),
+      h("td", { class: "weakcell" }, (r.weak || []).filter((x) => !/^0-/.test(x.key)).length ? (r.weak || []).filter((x) => !/^0-/.test(x.key)).map((x) => h("span", { class: "wk", title: KT.lessonName(x.key, true) }, "B" + x.key.split("-")[1] + " · " + pct(x.m) + "%")) : h("span", { class: "muted" }, r.n ? "Không có" : "—")),
       h("td", {}, r.rem_pending ? h("span", { class: "pill warn" }, "Chờ " + r.rem_pending) : null, r.rem_done ? h("span", { class: "pill ok" }, "Xong " + r.rem_done) : null, !r.rem_pending && !r.rem_done ? h("span", { class: "muted" }, "—") : null))));
     tb.append(tbody);
     box.append(h("div", { class: "panel", style: "margin-top:14px" }, h("div", { class: "review-t", style: "margin:0 0 10px" }, h("h3", { style: "margin:0" }, "Từng học sinh"), h("span", { class: "sp" }),
@@ -460,7 +460,7 @@
     f.grade = h("select", { id: "fGrade" }, KT.GRADES.map((g) => h("option", { value: g }, "Toán " + g)));
     const c0 = ov.classes[0]; if (c0.grade && CUR[c0.grade]) f.grade.value = c0.grade;
     f.kind = h("select", { id: "fKind" }, [["lesson", "Theo bài"], ["chapter", "Theo chương"], ["GK1", "Giữa học kì I"], ["HK1", "Cuối học kì I"], ["GK2", "Giữa học kì II"], ["HK2", "Cuối học kì II"],
-      ["grade", "Theo khối (cả năm)"], ["ts10", "Ôn thi vào lớp 10"], ["tn", "Thi thử tốt nghiệp THPT"], ["dgnl", "Đánh giá năng lực"], ["custom", "Tự chọn nhiều bài"], ["tags", "Chọn theo ID câu hỏi"]].map(([v, l]) => h("option", { value: v }, l)));
+      ["grade", "Theo khối (cả năm)"], ["ts10", "Ôn thi vào lớp 10"], ["tn", "Thi thử tốt nghiệp THPT"], ["dgnl_full", "Thi thử ĐGNL ĐHQG-HCM (đủ 120 câu)"], ["dgnl_part", "Luyện ĐGNL theo phần thi"], ["custom", "Tự chọn nhiều bài"], ["tags", "Chọn theo ID câu hỏi"]].map(([v, l]) => h("option", { value: v }, l)));
     f.sub = h("select", { id: "fSub" });
     const subWrap = h("div", {}, h("label", { for: "fSub" }, "Bài / chương"), f.sub);
     const pick = h("div", { class: "lesson-pick full hidden" });
@@ -535,15 +535,19 @@
     f.show = h("input", { type: "checkbox", id: "fShow", checked: true });
     f.levels = {}; ["NB", "TH", "VD", "VDC"].forEach((k) => (f.levels[k] = h("input", { type: "checkbox", checked: true, id: "lv" + k })));
     const avail = h("div", { class: "avail full" });
-    let bp = null;
+    let bp = null, dst = null;
     const fillSub = () => {
       const g = +f.grade.value;
       // loại đề chỉ dành cho một số khối
-      const only = { tn: g >= 10, dgnl: g >= 10, ts10: g === 9 };
+      const only = { tn: g >= 10, dgnl_full: g >= 10, dgnl_part: g >= 10, ts10: g === 9 };
       [...f.kind.options].forEach((o) => { if (o.value in only) { o.disabled = !only[o.value]; o.hidden = !only[o.value]; } });
       if (f.kind.selectedOptions[0] && f.kind.selectedOptions[0].disabled) f.kind.value = "lesson";
       const k = f.kind.value;
-      f.sub.innerHTML = ""; subWrap.classList.toggle("hidden", !(k === "lesson" || k === "chapter"));
+      f.sub.innerHTML = ""; subWrap.classList.toggle("hidden", !(k === "lesson" || k === "chapter" || k === "dgnl_part"));
+      subWrap.querySelector("label").textContent = k === "dgnl_part" ? "Phần thi" : "Bài / chương";
+      const isEx = k.startsWith("dgnl_"); [f.mc, f.tf, f.sa].forEach((x) => (x.disabled = isEx));
+      if (isEx && !dst) { T("dgnl_stats").then((d) => { dst = d || {}; fillSub(); }).catch(() => (dst = {})); }
+      if (k === "dgnl_part") KT.DGNL.secs.forEach((S) => f.sub.append(h("option", { value: S.k }, S.name + " (" + (dst && dst[S.k] ? dst[S.k].n : 0) + " câu)")));
       pick.classList.toggle("hidden", k !== "custom");
       tagWrap.classList.toggle("hidden", k !== "tags");
       if (k === "tags") { loadTagGroups(); onTags(); }
@@ -560,13 +564,24 @@
       else if (k === "grade") bp = B.grade(g);
       else if (k === "tn") bp = B.tn();
       else if (k === "ts10") bp = B.ts10();
-      else if (k === "dgnl") bp = B.dgnl();
+      else if (k === "dgnl_full") bp = B.dgnlFull();
+      else if (k === "dgnl_part") bp = B.dgnlPart(f.sub.value || "TV");
       else if (k === "tags") { const tg = parseTags(f.tags.value); bp = { kind: "Theo ID", grade: g, title: "Kiểm tra theo ID " + (tg.length ? tg.slice(0, 4).join(", ") + (tg.length > 4 ? "…" : "") : "") , lessons: tagMatch ? tagMatch.lessons : [], tags: tg, counts: { MC: 10, TF: 2, SA: 2 }, minutes: 30 }; }
       else { const ls = [...pick.querySelectorAll("input:checked")].map((x) => x.value); bp = { kind: "Tự chọn", grade: g, title: "Kiểm tra " + (ls.length ? ls.map((x) => "B" + x.split("-")[1]).join(", ") : "") + " · Toán " + g, lessons: ls, counts: { MC: 12, TF: 4, SA: 6 }, minutes: 45 }; }
       if (k === "tags" && !resetCounts && f.title.dataset.auto !== "0") f.title.value = bp.title;
       if (resetCounts) { const fc = k === "tags" ? bp.counts : KT.fitCounts(bp.counts, bankCounts(bp.lessons)); if (k !== "tags" && !(fc.MC + fc.TF + fc.SA)) Object.assign(fc, bp.counts);
         f.title.dataset.auto = "1"; f.title.value = bp.title; f.mc.value = fc.MC; f.tf.value = fc.TF; f.sa.value = fc.SA; f.min.value = bp.minutes; setClose(); }
       avail.innerHTML = "";
+      if (bp.exam) {
+        if (resetCounts) { f.mc.value = bp.counts.MC; f.tf.value = 0; f.sa.value = 0; }
+        if (!dst) { avail.append("Đang đếm số câu ĐGNL trong ngân hàng…"); return; }
+        const parts = bp.parts.map((x) => { const S = KT.dgnlSec(x.k), have = dst[x.k] ? dst[x.k].n : 0; return { S, need: x.n, have }; });
+        avail.append("Ngân hàng ĐGNL: " + parts.map((x) => x.S.name + " " + x.have + "/" + x.need).join(" · ") + ". ");
+        const lack = parts.filter((x) => x.have < x.need);
+        if (lack.length) avail.append(h("b", { style: "color:var(--bad)" }, "Thiếu câu ở: " + lack.map((x) => x.S.name).join(", ") + " — đề sẽ ít câu hơn. Soạn thêm file .tex có thẻ [DGNL-…] trong thư mục TOÁN."));
+        else avail.append(h("span", { style: "color:var(--ok)" }, "Mỗi học sinh nhận một đề riêng, đoạn văn đi kèm đủ các câu của nó."));
+        return;
+      }
       if (k === "tags") {
         if (!bp.tags.length) { avail.append("Nhập hoặc tích chọn ID câu hỏi ở trên."); return; }
         if (!tagMatch) { avail.append("Đang đếm số câu khớp…"); return; }
@@ -602,10 +617,11 @@
       h("div", { class: "full" }, h("button", { class: "btn", onclick: submitAssign }, "Giao đề")));
     async function submitAssign(e) {
       if (f.kind.value === "tags") { if (!bp.tags.length) return KT.toast("Chưa nhập ID câu hỏi nào.", "bad"); if (tagMatch && !(tagMatch.counts.MC + tagMatch.counts.TF + tagMatch.counts.SA)) return KT.toast("Không có câu nào khớp với ID đã nhập.", "bad"); }
-      else if (!bp.lessons.length) return KT.toast("Chưa chọn bài nào.", "bad");
+      else if (!bp.exam && !bp.lessons.length) return KT.toast("Chưa chọn bài nào.", "bad");
       const levels = Object.entries(f.levels).filter(([, x]) => x.checked).map(([k]) => k);
       const b2 = Object.assign({}, bp, { title: f.title.value.trim() || bp.title, counts: { MC: +f.mc.value || 0, TF: +f.tf.value || 0, SA: +f.sa.value || 0 }, minutes: +f.min.value || bp.minutes,
         levels: levels.length === 4 ? null : levels });
+      if (bp.exam) { b2.counts = { MC: bp.parts.reduce((a, x) => a + x.n, 0), TF: 0, SA: 0 }; delete b2.levels; }
       if (!b2.counts.MC && !b2.counts.TF && !b2.counts.SA) return KT.toast("Đề chưa có câu nào.", "bad");
       e.target.disabled = true;
       try {

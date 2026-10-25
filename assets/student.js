@@ -11,6 +11,7 @@
   const loadVids = () => vids ? Promise.resolve(vids) : api.rpc("videos_list", {}).then((v) => (vids = v || [])).catch(() => (vids = []));
   // chỗ đặt nút video (điền sau khi tải danh sách video)
   const vSlot = (keys, heading, cls) => { const s = h("span", { class: "vslot" }); loadVids().then((v) => { const b = KT.videoBtn(KT.videosFor(v, keys), heading, cls); if (b) s.append(b); }); return s; };
+  let dstats = null;
   let home = null, stats = null, lboard = null, fameTab = "week", grade = store.get("kt_grade", null);
   let cur = null;                              // bài đang làm (payload)
   let timerId = null, saveTimer = null, clockSkew = 0, dirty = new Set(), saving = false;
@@ -132,7 +133,8 @@
     stopTimers(); cur = null; setWho(); window.scrollTo(0, 0);
     app.innerHTML = ""; app.append(h("div", { class: "wrap loading" }, "Đang tải…"));
     try {
-      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null), loadVids()]);
+      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null), loadVids(),
+        dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {}))]);
       clockSkew = new Date(home.server_now).getTime() - Date.now();
       if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
     } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap empty" }, "Không tải được dữ liệu. ", h("button", { class: "btn sm", onclick: renderHome }, "Thử lại"))); return; }
@@ -370,8 +372,7 @@
       h("div", { class: "row" }, h("button", { class: "btn acc", disabled: cnt(KT.blueprint.ts10().lessons) < 6, onclick: () => setup(B.ts10()) }, "Thi thử"))));
     if (g >= 10) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "90 phút · 22 câu"), h("h3", {}, "Thi tốt nghiệp THPT"), h("p", {}, "Cấu trúc 2025: 12 câu nhiều phương án, 4 câu đúng/sai, 6 câu trả lời ngắn."),
       h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.tn()) }, "Thi thử"))));
-    if (g >= 10) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, "60 phút · 30 câu"), h("h3", {}, "Đánh giá năng lực"), h("p", {}, "Nhiều câu, thời gian ngắn, kiến thức lớp 10–12."),
-      h("div", { class: "row" }, h("button", { class: "btn acc", onclick: () => setup(B.dgnl()) }, "Thi thử"))));
+    if (g >= 10) cards.append(dgnlCard());
     const gv = (vids || []).filter((v) => v.g === g);
     if (gv.length) cards.append(h("div", { class: "card" }, h("span", { class: "tag acc" }, gv.length + " video"), h("h3", {}, "Video ôn tập"),
       h("p", {}, "Video thầy giảng lại kiến thức các bài Toán " + g + ". Xem lại trước khi làm bài."),
@@ -382,6 +383,26 @@
       h("p", {}, weak.length ? "Tập trung vào " + weak.map((x) => "Bài " + LESSON[x.key].l).join(", ") + " — các bài em đang yếu nhất, ưu tiên câu em từng làm sai." : "Làm vài bài lớp " + g + " để hệ thống biết em cần cải thiện phần nào."),
       h("div", { class: "row" }, h("button", { class: "btn", disabled: !weak.length, onclick: () => setup(improveBp(weak.map((x) => x.key))) }, "Làm bài cải thiện"))));
     return cards;
+  }
+  /* ---------------- thi thử ĐGNL ĐHQG-HCM ---------------- */
+  function dgnlCard() {
+    const D = KT.DGNL, have = (k) => (dstats && dstats[k] ? dstats[k].n : 0);
+    const total = D.secs.reduce((a, x) => a + Math.min(have(x.k), x.n), 0);
+    const sel = h("select", { "aria-label": "Chọn phần thi" }, D.secs.map((x) => h("option", { value: x.k, disabled: have(x.k) < 1 }, x.name + " (" + have(x.k) + " câu)")));
+    const f = [...sel.options].find((o) => !o.disabled); if (f) sel.value = f.value;
+    return h("div", { class: "card dgnl" }, h("span", { class: "tag acc" }, D.minutes + " phút · 120 câu"), h("h3", {}, "Thi thử ĐGNL ĐHQG-HCM"),
+      h("p", {}, "Đủ 3 phần theo cấu trúc 2026: Sử dụng ngôn ngữ (Tiếng Việt 30, Tiếng Anh 30), Toán học 30, Tư duy khoa học 30."
+        + (total && total < 120 ? " Ngân hàng hiện có " + total + "/120 câu nên đề sẽ ít câu hơn." : "")),
+      h("div", { class: "row stack" }, h("button", { class: "btn acc", disabled: !total, onclick: () => startDgnl(KT.blueprint.dgnlFull()) }, "Thi thử đầy đủ"),
+        sel, h("button", { class: "btn ghost", disabled: !f, onclick: () => startDgnl(KT.blueprint.dgnlPart(sel.value)) }, "Luyện riêng phần này")));
+  }
+  function startDgnl(bp) {
+    const go = async () => {
+      try { const p = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(p); }
+      catch (e) { fail(e); }
+    };
+    KT.confirm(bp.title, "Đề gồm <b>" + bp.counts.MC + " câu trắc nghiệm</b> (" + esc(KT.bpScope(bp)) + "), làm trong <b>" + bp.minutes + " phút</b>. "
+      + "Mỗi lần thi em nhận một đề khác nhau. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng.", "Bắt đầu", go);
   }
   function improveBp(keys, extra) {
     const g = +keys[0].split("-")[0], one = keys.length === 1;
@@ -599,8 +620,17 @@
     const head = h("div", { class: "exam-head" }, h("div", { class: "wrap" }, h("h2", {}, cur.title), saveEl, progEl, timerEl,
       h("button", { class: "btn acc sm", onclick: askSubmit }, "Nộp bài")));
     const list = h("div", {});
-    let lastT = null;
+    let lastT = null, lastSec = null, lastPart = null, seenG = new Set();
+    const rng = cur.exam ? KT.groupRange(cur.items) : {};
     cur.items.forEach((it, i) => {
+      if (cur.exam) {
+        const S = KT.dgnlSec(it.sec);
+        if (S.part !== lastPart) { list.append(h("div", { class: "part-big" }, S.part)); lastPart = S.part; }
+        if (it.sec !== lastSec) { list.append(h("div", { class: "part-t" }, S.name, h("small", {}, "(" + cur.items.filter((x) => x.sec === it.sec).length + " câu)"))); lastSec = it.sec; }
+        if (it.grp && !seenG.has(it.grp) && cur.passages && cur.passages[it.grp]) { seenG.add(it.grp); list.append(KT.passageBlock(cur.passages[it.grp], rng[it.grp][0], rng[it.grp][1])); }
+        list.append(KT.qBlock(it, i, "exam", onChange));
+        return;
+      }
       if (it.t !== lastT) {
         const n = cur.items.filter((x) => x.t === it.t).length;
         const tip = { MC: "mỗi câu chọn 1 phương án", TF: "mỗi câu 4 ý, chọn Đúng hoặc Sai cho từng ý", SA: "điền đáp số" }[it.t];
@@ -662,6 +692,7 @@
   /* ---------------- kết quả ---------------- */
   function showResult(p, auto, fresh) {
     stopTimers(); cur = null; window.scrollTo(0, 0); app.innerHTML = ""; setWho();
+    if (p.exam) return dgnlResult(p, auto, fresh);
     const ev = KT.evalPayload(p);
     const w = h("section", { class: "wrap" });
     const s = +p.score;
@@ -670,7 +701,7 @@
     const dur = Math.round((new Date(p.submitted_at) - new Date(p.started_at)) / 1000);
     w.append(h("div", { class: "review-t", style: "margin-top:22px" }, h("h2", { style: "margin:0;font-size:22px" }, p.title), h("span", { class: "sp" }),
       h("button", { class: "btn ghost sm", onclick: renderHome }, "Về trang chủ"),
-      lastCtx && lastCtx.bp ? h("button", { class: "btn sm", onclick: () => setup(lastCtx.bp) }, "Làm đề khác cùng loại") : null));
+      lastCtx && lastCtx.bp ? h("button", { class: "btn sm", onclick: () => (lastCtx.bp.exam ? startDgnl(lastCtx.bp) : setup(lastCtx.bp)) }, "Làm đề khác cùng loại") : null));
     if (auto) w.append(h("div", { class: "note" }, "Hết giờ — bài đã được nộp tự động."));
     const nRv = p.items.filter((x) => x.rv), nWrong = p.items.filter((x) => !x.rv && (x.status === "bad" || x.status === "part")).length;
     if (nRv.length || nWrong) {
@@ -756,20 +787,71 @@
     // xem lại
     w.append(h("div", { class: "section-t" }, "Xem lại bài làm" + (p.keys ? " & đáp án" : "")));
     if (!p.keys) w.append(h("div", { class: "note" }, "Giáo viên chưa cho xem đáp án của bài này."));
+    const rv = reviewList(p, multiG);
+    w.append(...rv.el);
+    w.append(h("p", { class: "foot" }, "* Mức độ có dấu sao là mức ước lượng."));
+    app.append(w); rv.show(() => true); KT.typeset(w, p.figs);
+    // làm mới hồ sơ ngầm
+    rpc("student_home").then((d) => (home = d)).catch(() => { });
+  }
+  function reviewList(p, multiG) {
     const fl = h("div", { class: "filters" }), listBox = h("div", { style: "margin-top:12px" });
     const mk = (lab, f) => h("button", { onclick: (e) => { fl.querySelectorAll("button").forEach((b) => b.classList.remove("on")); e.target.classList.add("on"); show(f); } }, lab);
     fl.append(mk("Tất cả", () => true), mk("Sai / chưa đủ", (r) => r.status === "bad" || r.status === "part"), mk("Chưa làm", (r) => r.status === "skip"), mk("Đúng", (r) => r.status === "ok"));
     if (p.items.some((r) => r.conf === 1 && (r.status === "bad" || r.status === "part"))) fl.append(mk("Tưởng đúng mà sai", (r) => r.conf === 1 && (r.status === "bad" || r.status === "part")));
+    if (p.exam) KT.DGNL.secs.filter((S) => p.items.some((x) => x.sec === S.k)).forEach((S) => fl.append(mk(S.name, (r) => r.sec === S.k)));
     fl.firstChild.classList.add("on");
     const canRep = p.status === "done" && !!sess;
-    const show = (f) => { listBox.innerHTML = ""; p.items.forEach((it, i) => { if (f(it)) listBox.append(KT.qBlock(it, i, "review", null, { withGrade: multiG, pts: it.pts,
-      onReport: canRep ? (x, btn) => reportDlg(p, x, i, btn) : null, reported: reported.has(it.qid) })); }); if (!listBox.children.length) listBox.append(h("div", { class: "empty" }, "Không có câu nào.")); KT.typeset(listBox, p.figs); };
-    w.append(fl, listBox);
-    w.append(h("p", { class: "foot" }, "* Mức độ có dấu sao là mức ước lượng."));
-    app.append(w); show(() => true); KT.typeset(w, p.figs);
+    const rng = KT.groupRange(p.items);
+    const show = (f) => {
+      listBox.innerHTML = ""; const seen = new Set();
+      p.items.forEach((it, i) => {
+        if (!f(it)) return;
+        if (it.grp && !seen.has(it.grp) && p.passages && p.passages[it.grp]) { seen.add(it.grp); listBox.append(KT.passageBlock(p.passages[it.grp], rng[it.grp][0], rng[it.grp][1])); }
+        listBox.append(KT.qBlock(it, i, "review", null, { withGrade: multiG, pts: p.exam ? null : it.pts, onReport: canRep ? (x, btn) => reportDlg(p, x, i, btn) : null, reported: reported.has(it.qid) }));
+      });
+      if (!listBox.children.length) listBox.append(h("div", { class: "empty" }, "Không có câu nào."));
+      KT.typeset(listBox, p.figs);
+    };
     if (canRep && !reportedLoaded) rpc("my_reports").then((rs) => { reportedLoaded = true; (rs || []).forEach((r) => r.status === "open" && reported.add(r.qid));
       if (reported.size && fl.querySelector(".on")) fl.querySelector(".on").click(); }).catch(() => { });
-    // làm mới hồ sơ ngầm
+    return { el: [fl, listBox], show };
+  }
+  function dgnlResult(p, auto, fresh) {
+    const ev = KT.evalPayload(p);
+    const w = h("section", { class: "wrap" });
+    const n = p.items.length, nOk = p.items.filter((r) => r.status === "ok").length, nSkip = p.items.filter((r) => r.status === "skip").length;
+    const full = n >= 100, scale = Math.round(nOk * 10);
+    const dur = Math.round((new Date(p.submitted_at) - new Date(p.started_at)) / 1000);
+    w.append(h("div", { class: "review-t", style: "margin-top:22px" }, h("h2", { style: "margin:0;font-size:22px" }, p.title), h("span", { class: "sp" }),
+      h("button", { class: "btn ghost sm", onclick: renderHome }, "Về trang chủ"),
+      lastCtx && lastCtx.bp && lastCtx.bp.exam ? h("button", { class: "btn sm", onclick: () => startDgnl(lastCtx.bp) }, "Làm đề khác") : null));
+    if (auto) w.append(h("div", { class: "note" }, "Hết giờ — bài đã được nộp tự động."));
+    const kp = h("div", { class: "kpis" });
+    KT.DGNL.secs.forEach((S) => { const v = ev.bySec[S.k]; if (v) kp.append(kpi(v.ok + "/" + v.n, S.name, v.ok / v.n)); });
+    kp.append(kpi(Math.floor(dur / 60) + " phút " + (dur % 60) + " giây", "Thời gian làm bài", null));
+    w.append(h("div", { class: "res-top" }, h("div", { class: "score" },
+      h("div", { class: "big" }, full ? String(scale) : nOk + "", h("small", {}, full ? " /1200" : " /" + n)),
+      h("div", { class: "lab" }, (sess ? sess.name : "") + " · " + p.kind),
+      h("div", { class: "rank" }, full ? "Ước tính: mỗi câu đúng 10 điểm" : "Thang 10: " + fmt(+p.score))), kp));
+    w.append(h("p", { class: "muted", style: "margin:8px 0 0" }, "Đúng " + nOk + "/" + n + " câu" + (nSkip ? ", bỏ trống " + nSkip + " câu" : "") + ". "
+      + (full ? "Điểm thi thật được ĐHQG-HCM quy đổi theo độ khó từng câu, nên điểm này chỉ mang tính tham khảo." : "")));
+    if (p.xp != null) w.append(xpBlock(p, fresh));
+    const rows = KT.DGNL.secs.filter((S) => ev.bySec[S.k]).map((S) => ({ label: S.name, m: ev.bySec[S.k].ok / ev.bySec[S.k].n, sub: ev.bySec[S.k].ok + "/" + ev.bySec[S.k].n + " câu đúng" }));
+    if (rows.length > 1) w.append(h("div", { class: "section-t" }, "Kết quả theo phần thi"), h("div", { class: "panel" }, KT.hbars(rows.slice().sort((a, b) => a.m - b.m)), KT.statusLegend()));
+    const weak = rows.filter((r) => r.m < 0.6).sort((a, b) => a.m - b.m);
+    if (weak.length) {
+      const rb = h("div", { class: "recs" });
+      weak.slice(0, 3).forEach((r) => { const S = KT.DGNL.secs.find((x) => x.name === r.label);
+        rb.append(h("div", { class: "rec" }, h("div", { class: "tx" }, h("b", {}, r.label), h("span", {}, "Đạt " + pct(r.m) + "%. Luyện riêng phần này để cải thiện.")),
+          h("button", { class: "btn acc sm", onclick: () => startDgnl(KT.blueprint.dgnlPart(S.k)) }, "Luyện phần này"))); });
+      w.append(h("div", { class: "section-t" }, "Đề xuất luyện tập"), rb);
+    }
+    w.append(h("div", { class: "section-t" }, "Xem lại bài làm" + (p.keys ? " & đáp án" : "")));
+    if (!p.keys) w.append(h("div", { class: "note" }, "Giáo viên chưa cho xem đáp án của bài này."));
+    const rv = reviewList(p, false);
+    w.append(...rv.el);
+    app.append(w); rv.show(() => true);
     rpc("student_home").then((d) => (home = d)).catch(() => { });
   }
   function kpi(n, l, frac) { return h("div", { class: "kpi" }, h("div", { class: "n" }, n), h("div", { class: "l" }, l), frac != null ? h("div", { class: "bar" }, h("i", { style: "width:" + pct(frac) + "%" })) : null); }
