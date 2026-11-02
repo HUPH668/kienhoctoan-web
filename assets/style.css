@@ -712,3 +712,18 @@ table.tb{border-collapse:collapse;margin:8px auto;font-size:14.5px}
 table.tb td{border:1px solid var(--line-2);padding:5px 10px;text-align:center;vertical-align:middle}
 table.tb tr:first-child td{font-weight:700;background:var(--surface)}
 .card.dgnl .row.stack select{min-width:0}
+
+/* ---------- chống gian lận ---------- */
+body.nocopy .exam-grid, body.nocopy .exam-head { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.nocopy input, body.nocopy textarea { -webkit-user-select: text; user-select: text; }
+.guard { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+.guard.on { color: var(--bad); font-weight: 700; }
+.flagchips { display: flex; flex-wrap: wrap; gap: 4px; }
+.flag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); white-space: nowrap; }
+.flag.hi { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.flagbox { border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); background: color-mix(in srgb, var(--bad) 6%, transparent);
+  border-radius: 12px; padding: 10px 14px; margin: 0 0 14px; }
+.flagbox ul { margin: 6px 0 0; padding-left: 20px; }
+.flagbox li { margin: 2px 0; }
+tr.sus td { background: color-mix(in srgb, var(--bad) 5%, transparent); }

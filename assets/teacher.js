@@ -273,6 +273,37 @@
   }
 
   /* ---------------- THEO DÕI ---------------- */
+  /* ---------------- cờ bài đáng ngờ ---------------- */
+  const FLAG_SHORT = { leave: "Rời trang", copy: "Sao chép", fast: "Quá nhanh", jump: "Điểm vọt", hard: "Vận dụng bất thường" };
+  function flagChips(r) {
+    const fl = r.flags || [];
+    const out = fl.map((f) => h("span", { class: "flag" + (f.lv >= 2 ? " hi" : ""), title: f.t },
+      f.k === "leave" ? "Rời trang " + r.leaves : f.k === "copy" ? "Sao chép " + (r.copy_n || "") : FLAG_SHORT[f.k] || f.k));
+    if (!fl.some((f) => f.k === "leave") && r.leaves) out.push(h("span", { class: "muted", style: "font-size:12px", title: "Chưa tới mức cảnh báo (từ 3 lần hoặc 1 phút)" }, "rời " + r.leaves));
+    return out.length ? h("div", { class: "flagchips" }, out) : h("span", { class: "muted" }, "–");
+  }
+  function flagBox(fl) {
+    if (!fl || !fl.length) return null;
+    return h("div", { class: "flagbox" }, h("b", {}, "Dấu hiệu cần kiểm tra lại"), h("ul", {}, fl.map((f) => h("li", {}, f.t))),
+      h("div", { class: "sub", style: "margin-top:6px" }, "Đây chỉ là dấu hiệu, không phải kết luận. Thầy nên hỏi lại em vài câu trong bài để xác nhận."));
+  }
+  async function flaggedPanel(el) {
+    const box = h("div", { class: "panel", style: "margin-top:18px" }, h("h3", {}, "Bài đáng ngờ 14 ngày qua"), h("div", { class: "loading" }, "Đang tải…"));
+    el.append(box);
+    let rows;
+    try { rows = await T("t_flagged", { p_days: 14 }); } catch (e) { box.lastChild.remove(); box.append(h("div", { class: "empty" }, "Chưa tải được.")); return; }
+    box.lastChild.remove();
+    if (!rows.length) { box.append(h("div", { class: "empty" }, "Không có bài nào có dấu hiệu bất thường.")); return; }
+    box.append(h("p", { class: "sub", style: "margin:0 0 10px" }, "Gồm cả bài giao và bài các em tự luyện. Bấm vào một dòng để xem bài làm."));
+    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Học sinh", "Lớp", "Bài", "Điểm", "Nộp lúc", "Dấu hiệu"].map((x) => h("th", {}, x)))));
+    const tbody = h("tbody");
+    rows.slice(0, 60).forEach((r) => tbody.append(h("tr", { class: "click", onclick: () => viewAttempt(r.attempt, r) },
+      h("td", {}, h("b", {}, r.name), h("div", { class: "mono", style: "font-size:12px;color:var(--ink-3)" }, r.code)), h("td", {}, r.class || "–"),
+      h("td", {}, r.title, h("div", { style: "font-size:12px;color:var(--ink-3)" }, r.assigned ? "Bài giao" : "Tự luyện · " + r.kind)),
+      h("td", { class: "num" }, h("b", {}, fmt(r.score))), h("td", {}, KT.dt(r.submitted_at)), h("td", {}, flagChips(r)))));
+    tb.append(tbody);
+    box.append(h("div", { class: "tbl-wrap" }, tb));
+  }
   function tabMonitor(el) {
     if (curAsg) return monitorView(el, curAsg);
     if (ov.n_pending) el.append(h("div", { class: "bknote", style: "margin-bottom:14px" }, h("span", {}, "Có " + ov.n_pending + " học sinh tự đăng ký đang chờ thầy duyệt."),
@@ -280,7 +311,7 @@
     const list = ov.assignments || [];
     el.append(h("div", { class: "review-t" }, h("h2", { style: "margin:0" }, "Bài đã giao"), h("span", { class: "sp" }),
       h("button", { class: "btn ghost sm", onclick: load }, "Làm mới"), h("button", { class: "btn sm", onclick: () => { tab = "assign"; render(); } }, "+ Giao đề mới")));
-    if (!list.length) { el.append(h("div", { class: "panel empty", style: "margin-top:14px" }, "Chưa giao bài nào. Vào mục “Giao đề” để bắt đầu.")); return; }
+    if (!list.length) { el.append(h("div", { class: "panel empty", style: "margin-top:14px" }, "Chưa giao bài nào. Vào mục “Giao đề” để bắt đầu.")); flaggedPanel(el); return; }
     const now = new Date(ov.server_now).getTime();
     const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Bài", "Lớp", "Thời gian", "Trạng thái", "Đã nộp", "Đang làm", "Điểm TB"].map((x) => h("th", {}, x)))));
     const tbody = h("tbody");
@@ -294,6 +325,7 @@
     });
     tb.append(tbody);
     el.append(h("div", { class: "tbl-wrap", style: "margin-top:14px" }, tb));
+    flaggedPanel(el);
   }
 
   // gia hạn cả bài: giờ đóng mới, số lần làm, cho em đang làm dở đủ thời gian
@@ -374,20 +406,22 @@
       const kp = h("div", { class: "kpis" });
       const k = (n, l) => h("div", { class: "kpi" }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
       kp.append(k(done.length + "/" + rows.length, "Đã nộp"), k(String(doing.length), "Đang làm"), k(String(none.length), "Chưa vào"),
-        k(sc.length ? fmt(sc.reduce((x, y) => x + y, 0) / sc.length) : "–", "Điểm trung bình"), k(sc.length ? fmt(Math.max(...sc)) + " / " + fmt(Math.min(...sc)) : "–", "Cao nhất / thấp nhất"));
+        k(sc.length ? fmt(sc.reduce((x, y) => x + y, 0) / sc.length) : "–", "Điểm trung bình"),
+        k(String(rows.filter((r) => (r.flags || []).length).length), "Bài có dấu hiệu bất thường"), k(sc.length ? fmt(Math.max(...sc)) + " / " + fmt(Math.min(...sc)) : "–", "Cao nhất / thấp nhất"));
       el.append(kp);
       // bảng học sinh
-      const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Mã", "Họ tên", "Trạng thái", "Tiến độ", "Điểm", "Bắt đầu", "Nộp lúc", ""].map((x) => h("th", {}, x)))));
+      const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Mã", "Họ tên", "Trạng thái", "Tiến độ", "Điểm", "Cảnh báo", "Bắt đầu", "Nộp lúc", ""].map((x) => h("th", {}, x)))));
       const tbody = h("tbody");
       rows.forEach((r) => {
         let st;
         if (!r.status) st = h("span", { class: "pill" }, "Chưa vào");
         else if (r.status === "doing") { const left = Math.max(0, Math.round((new Date(r.ends_at) - now) / 60000)); const idle = (now - new Date(r.last_seen)) / 1000 > 120; st = h("span", { class: "pill warn" }, "Đang làm · còn " + left + "′" + (idle ? " · không hoạt động" : "")); }
         else st = h("span", { class: "pill ok" }, "Đã nộp");
-        tbody.append(h("tr", { class: r.attempt ? "click" : "", onclick: () => r.attempt && viewAttempt(r.attempt) },
+        tbody.append(h("tr", { class: (r.attempt ? "click" : "") + ((r.flags || []).length ? " sus" : ""), onclick: () => r.attempt && viewAttempt(r.attempt, r) },
           h("td", { class: "mono" }, r.code), h("td", {}, r.name), h("td", {}, st),
           h("td", {}, r.n_items ? [h("span", { class: "prog-mini" }, h("i", { style: "width:" + pct(r.n_answered / r.n_items) + "%" })), r.n_answered + "/" + r.n_items] : "–"),
           h("td", { class: "num" }, r.status === "done" ? h("b", {}, fmt(r.score)) : "–"),
+          h("td", {}, r.attempt ? flagChips(r) : "–"),
           h("td", {}, r.started_at ? KT.dt(r.started_at) : "–"), h("td", {}, r.submitted_at ? KT.dt(r.submitted_at) : "–"),
           h("td", { style: "white-space:nowrap" }, r.status === "doing" ? h("button", { class: "btn ghost sm", title: "Cộng thêm thời gian cho riêng em này", onclick: (e) => { e.stopPropagation(); addTime(r, refresh); } }, "+ Cộng giờ") : null,
             r.attempt ? h("span", { style: "color:var(--brand);font-size:13px;margin-left:8px" }, "Xem bài →") : "")));
@@ -422,12 +456,13 @@
     stopPoll();
     poll = setInterval(() => { if (document.visibilityState === "visible") { repTick++; refresh(repTick % 3 === 0); } }, 5000);
   }
-  async function viewAttempt(id) {
+  async function viewAttempt(id, row) {
     try {
       const p = await T("t_attempt", { p_attempt: id });
       const ev = p.status === "done" ? KT.evalPayload(p) : null;
       const box = h("div", {});
       box.append(h("h3", {}, p.student + " — " + p.title), h("p", {}, p.status === "done" ? "Điểm: " + fmt(p.score) + " · nộp lúc " + KT.dt(p.submitted_at) : "Đang làm · đã lưu các câu trả lời đến thời điểm hiện tại"));
+      if (row) { const fb = flagBox(row.flags); if (fb) box.append(fb); }
       if (ev) box.append(h("div", { class: "radars" }, KT.radarPanel("Theo nội dung", "", KT.contentAxes(Object.entries(ev.byL).map(([k, v]) => ({ key: k, m: v.m / v.w, w: v.w })))),
         KT.radarPanel("Theo mức độ & dạng câu", "", KT.skillAxes(ev.byLv, ev.byT))));
       p.items.forEach((it, i) => box.append(KT.qBlock(it, i, "review", null, { pts: it.pts, withGrade: true })));

@@ -27,7 +27,69 @@
     sess = null; store.del("kt_stu"); stopTimers(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
-  function stopTimers() { clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; }
+  function stopTimers() { clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
+
+  /* ---------------- chống gian lận: ghi lại việc rời trang, chặn sao chép đề ---------------- */
+  let guardOff = () => { };
+  function startGuard(guardEl) {
+    guardOff();
+    const aid = cur.id, key = "kt_focus_" + aid;
+    const st = Object.assign({ l: 0, a: 0, c: 0 }, store.get(key, {}) || {});
+    let leftAt = null, sendT = null, lastToast = 0;
+    const save = () => store.set(key, st);
+    const send = (now) => {
+      clearTimeout(sendT);
+      const go = () => rpc("report_focus", { p_attempt: aid, p_leaves: st.l, p_away_s: Math.round(st.a), p_copy: st.c }).catch(() => { });
+      if (now) go(); else sendT = setTimeout(go, 400);
+    };
+    const show = () => {
+      guardEl.textContent = st.l ? "Đã rời trang " + st.l + " lần" : "Hệ thống ghi lại việc rời trang";
+      guardEl.className = "guard" + (st.l ? " on" : "");
+    };
+    const inField = (e) => e.target && e.target.closest && e.target.closest("input, textarea");
+    const away = () => { if (leftAt == null) leftAt = Date.now(); };
+    const back = () => {
+      if (leftAt == null) return;
+      const d = (Date.now() - leftAt) / 1000; leftAt = null;
+      if (d < 2) return;                     // chớp màn hình, bấm nhầm: bỏ qua
+      st.l++; st.a += d; save(); show(); send();
+      KT.toast("Em vừa rời khỏi trang làm bài (lần " + st.l + "). Thầy sẽ thấy số lần này.", "bad");
+    };
+    const onVis = () => { if (document.visibilityState === "hidden") away(); else if (document.hasFocus()) back(); };
+    const onBlur = () => away();
+    const onFocus = () => { if (document.visibilityState === "visible") back(); };
+    const tryCopy = (e) => {
+      if (inField(e)) return;
+      e.preventDefault();
+      st.c++; save(); send();
+      if (Date.now() - lastToast > 3000) { lastToast = Date.now(); KT.toast("Không được sao chép đề trong lúc làm bài.", "bad"); }
+    };
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || inField(e)) return;
+      const k = (e.key || "").toLowerCase();
+      if (k === "c" || k === "x") tryCopy(e);
+      else if (["a", "p", "s", "u"].includes(k)) e.preventDefault();
+    };
+    const noDrag = (e) => { if (!inField(e)) e.preventDefault(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("blur", onBlur); window.addEventListener("focus", onFocus);
+    document.addEventListener("copy", tryCopy); document.addEventListener("cut", tryCopy);
+    document.addEventListener("contextmenu", tryCopy); document.addEventListener("keydown", onKey);
+    document.addEventListener("dragstart", noDrag);
+    document.body.classList.add("nocopy");
+    show();
+    if (st.l || st.c) send(true);
+    guardOff = () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("blur", onBlur); window.removeEventListener("focus", onFocus);
+      document.removeEventListener("copy", tryCopy); document.removeEventListener("cut", tryCopy);
+      document.removeEventListener("contextmenu", tryCopy); document.removeEventListener("keydown", onKey);
+      document.removeEventListener("dragstart", noDrag);
+      document.body.classList.remove("nocopy");
+      if (sendT) { clearTimeout(sendT); send(true); }
+      guardOff = () => { };
+    };
+  }
   const takeEnd = (r) => { if (r && r.ends_at && cur) { cur.ends_at = r.ends_at; examEnd = new Date(r.ends_at).getTime(); } };
   // hỏi máy chủ giờ hết hạn (thầy có thể vừa cộng giờ / gia hạn)
   async function beat() { if (!cur || cur.status !== "doing") return null; try { const r = await rpc("save_answers", { p_attempt: cur.id, p_answers: [] }); takeEnd(r); return r; } catch (e) { return null; } }
@@ -617,7 +679,8 @@
     const timerEl = h("span", { class: "timer", role: "timer" }, "--:--");
     const progEl = h("span", { class: "prog" });
     setSave("Đã lưu ✓", "ok");
-    const head = h("div", { class: "exam-head" }, h("div", { class: "wrap" }, h("h2", {}, cur.title), saveEl, progEl, timerEl,
+    const guardEl = h("span", { class: "guard", title: "Mỗi lần em chuyển sang tab hoặc ứng dụng khác đều được ghi lại và thầy sẽ thấy." });
+    const head = h("div", { class: "exam-head" }, h("div", { class: "wrap" }, h("h2", {}, cur.title), guardEl, saveEl, progEl, timerEl,
       h("button", { class: "btn acc sm", onclick: askSubmit }, "Nộp bài")));
     const list = h("div", {});
     let lastT = null, lastSec = null, lastPart = null, seenG = new Set();
@@ -651,6 +714,7 @@
     };
     app.append(head, h("div", { class: "wrap exam-grid" }, h("div", {}, list), nav));
     updNav(); KT.typeset(app, cur.figs);
+    startGuard(guardEl);
     examEnd = new Date(cur.ends_at).getTime();
     let checking = false;
     const tick = async () => {
@@ -678,7 +742,7 @@
     setSave("Đang nộp bài…");
     try {
       const p = await rpc("submit_attempt", { p_attempt: cur.id, p_answers: all });
-      store.del(localKey()); cur = null;
+      store.del(localKey()); store.del("kt_focus_" + cur.id); cur = null;
       showResult(p, auto, true);
     } catch (e) {
       if (/SESSION_EXPIRED/.test(e.message)) return fail(e);
