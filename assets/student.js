@@ -682,38 +682,57 @@
     const guardEl = h("span", { class: "guard", title: "Mỗi lần em chuyển sang tab hoặc ứng dụng khác đều được ghi lại và thầy sẽ thấy." });
     const head = h("div", { class: "exam-head" }, h("div", { class: "wrap" }, h("h2", {}, cur.title), guardEl, saveEl, progEl, timerEl,
       h("button", { class: "btn acc sm", onclick: askSubmit }, "Nộp bài")));
-    const list = h("div", {});
-    let lastT = null, lastSec = null, lastPart = null, seenG = new Set();
+    // hiển thị từng câu một: trả lời xong mới sang câu tiếp theo (không xem được cả đề cùng lúc)
+    const n = cur.items.length;
+    const reach = () => { let i = 0; while (i < n && KT.answered(cur.items[i]) === 2) i++; return Math.min(i, n - 1); };
+    let pos = reach();
     const rng = cur.exam ? KT.groupRange(cur.items) : {};
-    cur.items.forEach((it, i) => {
-      if (cur.exam) {
-        const S = KT.dgnlSec(it.sec);
-        if (S.part !== lastPart) { list.append(h("div", { class: "part-big" }, S.part)); lastPart = S.part; }
-        if (it.sec !== lastSec) { list.append(h("div", { class: "part-t" }, S.name, h("small", {}, "(" + cur.items.filter((x) => x.sec === it.sec).length + " câu)"))); lastSec = it.sec; }
-        if (it.grp && !seenG.has(it.grp) && cur.passages && cur.passages[it.grp]) { seenG.add(it.grp); list.append(KT.passageBlock(cur.passages[it.grp], rng[it.grp][0], rng[it.grp][1])); }
-        list.append(KT.qBlock(it, i, "exam", onChange));
-        return;
-      }
-      if (it.t !== lastT) {
-        const n = cur.items.filter((x) => x.t === it.t).length;
-        const tip = { MC: "mỗi câu chọn 1 phương án", TF: "mỗi câu 4 ý, chọn Đúng hoặc Sai cho từng ý", SA: "điền đáp số" }[it.t];
-        list.append(h("div", { class: "part-t" }, PART[it.t] + ". " + TYPES[it.t], h("small", {}, "(" + n + " câu · " + tip + ")")));
-        lastT = it.t;
-      }
-      list.append(KT.qBlock(it, i, "exam", onChange));
-    });
+    const stage = h("div", { class: "one-q" });
+    const hint = h("span", { class: "onehint" });
+    const prevB = h("button", { type: "button", class: "btn ghost", onclick: () => go(pos - 1) }, "← Câu trước");
+    const nextB = h("button", { type: "button", class: "btn", onclick: () => (pos === n - 1 ? askSubmit() : go(pos + 1)) }, "Câu tiếp theo →");
+    const go = (i) => {
+      if (i < 0 || i >= n || i === pos) return;
+      if (i > reach()) return KT.toast("Em trả lời xong câu " + (reach() + 1) + " mới sang được câu tiếp theo.", "bad");
+      pos = i; draw();
+    };
+    const sectionLabel = (it) => {
+      if (cur.exam) { const S = KT.dgnlSec(it.sec); return S.part + " · " + S.name; }
+      return PART[it.t] + ". " + TYPES[it.t];
+    };
+    const draw = () => {
+      stage.innerHTML = "";
+      const it = cur.items[pos];
+      stage.append(h("div", { class: "one-top" }, h("span", { class: "one-sec" }, sectionLabel(it)), h("span", { class: "one-pos" }, "Câu " + (pos + 1) + " / " + n)));
+      if (it.grp && cur.passages && cur.passages[it.grp]) stage.append(KT.passageBlock(cur.passages[it.grp], rng[it.grp][0], rng[it.grp][1]));
+      stage.append(KT.qBlock(it, pos, "exam", onChange));
+      KT.typeset(stage, cur.figs);
+      updNav();
+      const top = stage.getBoundingClientRect().top + window.scrollY - 150;
+      if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    };
     const grid = h("div", { class: "navgrid" });
-    cur.items.forEach((it, i) => grid.append(h("button", { type: "button", onclick: () => document.getElementById("q" + i).scrollIntoView({ behavior: "smooth", block: "start" }) }, String(i + 1))));
+    cur.items.forEach((it, i) => grid.append(h("button", { type: "button", onclick: () => go(i) }, String(i + 1))));
     const nav = h("aside", { class: "navbox" }, h("h4", {}, "Danh sách câu"), grid,
       h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:var(--brand)" }), "Đã làm"), h("span", {}, h("i", { style: "background:var(--surface-2);border:1px solid var(--line-2)" }), "Chưa làm"), h("span", {}, h("i", { style: "background:var(--accent)" }), "Đánh dấu")),
+      h("p", { class: "sub", style: "margin:8px 0 10px;font-size:12.5px" }, "Mỗi lần chỉ hiện một câu. Em trả lời xong mới sang được câu tiếp theo; có thể quay lại các câu đã làm."),
       h("button", { class: "btn acc", onclick: askSubmit }, "Nộp bài"));
     updNav = () => {
-      let done = 0;
-      cur.items.forEach((it, i) => { const a = KT.answered(it); if (a === 2) done++; grid.children[i].className = (a === 2 ? "done" : "") + (it.flag ? " flagged" : ""); });
-      progEl.textContent = "Đã làm " + done + "/" + cur.items.length;
+      let done = 0; const r = reach();
+      cur.items.forEach((it, i) => { const a = KT.answered(it); if (a === 2) done++;
+        grid.children[i].className = (a === 2 ? "done" : "") + (it.flag ? " flagged" : "") + (i === pos ? " cur" : "") + (i > r ? " locked" : "");
+        grid.children[i].disabled = i > r; });
+      progEl.textContent = "Đã làm " + done + "/" + n;
+      const ok = KT.answered(cur.items[pos]) === 2;
+      prevB.disabled = pos === 0;
+      nextB.textContent = pos === n - 1 ? "Nộp bài" : "Câu tiếp theo →";
+      nextB.className = "btn" + (pos === n - 1 ? " acc" : "");
+      nextB.disabled = !ok && pos < n - 1;
+      hint.textContent = ok ? "" : cur.items[pos].t === "TF" ? "Chọn Đúng/Sai cho cả 4 ý để sang câu tiếp theo." : cur.items[pos].t === "SA" ? "Nhập đáp số để sang câu tiếp theo." : "Chọn một phương án để sang câu tiếp theo.";
     };
+    const list = h("div", {}, stage, h("div", { class: "one-nav" }, prevB, hint, nextB));
     app.append(head, h("div", { class: "wrap exam-grid" }, h("div", {}, list), nav));
-    updNav(); KT.typeset(app, cur.figs);
+    draw();
     startGuard(guardEl);
     examEnd = new Date(cur.ends_at).getTime();
     let checking = false;
