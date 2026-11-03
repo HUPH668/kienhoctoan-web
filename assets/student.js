@@ -12,7 +12,7 @@
   // chỗ đặt nút video (điền sau khi tải danh sách video)
   const vSlot = (keys, heading, cls) => { const s = h("span", { class: "vslot" }); loadVids().then((v) => { const b = KT.videoBtn(KT.videosFor(v, keys), heading, cls); if (b) s.append(b); }); return s; };
   let dstats = null;
-  let home = null, stats = null, lboard = null, fameTab = "week", grade = store.get("kt_grade", null);
+  let home = null, stats = null, lboard = null, fameTab = "all", grade = store.get("kt_grade", null);
   let cur = null;                              // bài đang làm (payload)
   let timerId = null, saveTimer = null, clockSkew = 0, dirty = new Set(), saving = false;
   let lastCtx = null;                          // ngữ cảnh để "làm đề khác cùng loại"
@@ -96,7 +96,7 @@
   function setWho() {
     who.innerHTML = "";
     if (!sess) return;
-    who.append(h("span", { class: "who-n" }, h("b", {}, sess.name), h("small", {}, (sess.class ? "Lớp " + sess.class + " · " : "") + sess.code)),
+    who.append(h("span", { class: "who-n" }, h("b", {}, sess.name), h("small", {}, (sess.class ? "Lớp " + sess.class + ", mã " : "Mã ") + sess.code)),
       h("button", { class: "btn ghost sm", onclick: () => { if (cur && cur.status === "doing") KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); } }, "Đăng xuất"));
   }
   document.getElementById("goHome").addEventListener("click", () => { if (cur && cur.status === "doing") { KT.confirm("Rời bài đang làm?", "Bài làm được lưu trên máy chủ, em có thể quay lại làm tiếp (đồng hồ vẫn chạy).", "Về trang chủ", () => { flush(); renderHome(); }); } else if (sess) renderHome(); });
@@ -202,9 +202,10 @@
     } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap empty" }, "Không tải được dữ liệu. ", h("button", { class: "btn sm", onclick: renderHome }, "Thử lại"))); return; }
     app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    w.append(h("div", { class: "hero" }, h("div", { class: "hero-tx" }, h("h1", {}, "Chào " + home.student.name.split(" ").slice(-1)[0] + "!"), h("p", {}, grade >= 10 ? "Làm các bài được giao, hoặc tự luyện theo bài, chương, học kì, thi tốt nghiệp và đánh giá năng lực." : "Làm các bài được giao, hoặc tự luyện theo bài, chương, giữa kì và cuối kì.")), levelCard()));
+    const liveProm = rpc("live_list").catch(() => []);
+    w.append(h("div", { class: "hero nb" }, h("div", { class: "hero-tx" }, h("h1", { class: "nb-greet" }, greet() + " " + home.student.name.split(" ").slice(-1)[0] + "!"), todoBox(liveProm)), levelCard()));
 
-    w.append(liveSlot());
+    w.append(liveSlot(liveProm));
     if ((home.remedials || []).length) w.append(remedialBlock());
     w.append(todayBlock());
 
@@ -227,7 +228,7 @@
         const res = a.last_attempt ? h("button", { class: "btn ghost sm", onclick: () => viewAttempt(a.last_attempt) }, "Xem kết quả") : null;
         list.append(h("div", { class: "card" }, h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, h("span", { class: "tag acc" }, a.kind), state),
           h("h3", {}, a.title),
-          h("p", { class: "meta" }, a.n_q + " câu · " + a.minutes + " phút · hạn " + KT.dt(a.closes_at) + (a.max_attempts > 1 ? " · tối đa " + a.max_attempts + " lần" : "")),
+          h("p", { class: "meta" }, a.n_q + " câu, " + a.minutes + " phút. Hạn nộp " + KT.dt(a.closes_at) + (a.max_attempts > 1 ? ", làm tối đa " + a.max_attempts + " lần" : "")),
           a.best != null ? h("p", {}, "Điểm: ", h("b", {}, fmt(a.best))) : null,
           h("div", { class: "row" }, btn, res)));
       });
@@ -262,7 +263,7 @@
     else {
       const ul = h("ul", { class: "hist" });
       home.history.forEach((r) => ul.append(h("li", { class: "click", onclick: () => viewAttempt(r.id), tabindex: 0 }, h("span", { class: "sc" }, fmt(r.score)),
-        h("div", { class: "ti" }, h("b", {}, r.title), h("span", {}, KT.dt(r.submitted_at) + " · " + r.kind + (r.assigned ? " · bài giao" : ""))))));
+        h("div", { class: "ti" }, h("b", {}, r.title), h("span", {}, r.kind + (r.assigned ? " (bài giao)" : "") + ", nộp lúc " + KT.dt(r.submitted_at))))));
       hp.append(ul);
     }
     pr.append(hp); w.append(pr);
@@ -271,16 +272,99 @@
   }
 
   /* ---------------- thăng cấp + vinh danh ---------------- */
+  const greet = () => { const hr = new Date().getHours(); return hr < 11 ? "Chào buổi sáng," : hr < 14 ? "Chào buổi trưa," : hr < 18 ? "Chào buổi chiều," : "Chào buổi tối,"; };
+  // việc cần làm: tính từ dữ liệu thật, làm xong việc nào thì việc đó tự biến mất
+  function todoBox(liveProm) {
+    const box = h("div", { class: "todo" });
+    const now = Date.now() + clockSkew, items = [];
+    const add = (o) => items.push(o);
+    (home.remedials || []).forEach((r) => add({ k: "rem", ic: "!", pri: 0, t: "Làm bài bổ sung bắt buộc", s: remNames(r).join("; "), go: () => startRemedial(r.id), cta: r.doing ? "Làm tiếp" : "Làm ngay" }));
+    (home.assignments || []).forEach((a) => {
+      const op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
+      if (a.remedial || now < op || now > cl) return;
+      if (!a.doing && a.done > 0) return;                  // đã nộp: xong việc
+      const left = cl - now, urgent = left < 864e5;
+      add({ k: "asg", ic: "✎", pri: urgent ? 1 : 2, urgent, t: (a.doing ? "Làm tiếp bài: " : "Bài thầy giao: ") + a.title,
+        s: a.n_q + " câu, " + a.minutes + " phút. Hạn nộp " + KT.dt(a.closes_at) + (urgent ? ", sắp hết hạn" : ""), go: () => openAssignment(a), cta: a.doing ? "Làm tiếp" : "Làm bài" });
+    });
+    (home.doing || []).forEach((d) => add({ k: "doing", ic: "↻", pri: 2, t: "Làm tiếp: " + d.title, s: "Hết giờ lúc " + KT.dt(d.ends_at), go: () => viewAttempt(d.id), cta: "Làm tiếp" }));
+    const ms = home.mission;
+    if (!ms || ms.status === "doing") add({ k: "mis", ic: "★", pri: 3, t: "Nhiệm vụ hôm nay", s: ms ? "Em đang làm dở — làm tiếp cho xong nhé" : "Khoảng 12 câu trong 15 phút, giữ chuỗi " + (home.streak || 0) + " ngày học liên tiếp", go: startMission, cta: ms ? "Làm tiếp" : "Bắt đầu" });
+    const due = (home.review || {}).due || 0;
+    if (due) add({ k: "rev", ic: "⟲", pri: 4, t: "Ôn lại " + Math.min(due, 10) + " câu từng làm sai", s: due + " câu trong sổ câu sai đã đến hạn ôn", go: startReview, cta: "Ôn ngay" });
+    const list = h("ul", { class: "todo-l" });
+    const head = h("p", { class: "todo-h" });
+    const draw = () => {
+      items.sort((a, b) => a.pri - b.pri);
+      list.innerHTML = ""; head.innerHTML = "";
+      if (!items.length) {
+        box.classList.add("clear");
+        head.append(h("span", { class: "todo-done", html: '<svg viewBox="0 0 48 40" aria-hidden="true"><path d="M4 22 L17 34 L44 5"/></svg>' }),
+          h("span", {}, h("b", {}, "Hôm nay em đã xong hết việc."), h("span", {}, "Muốn học thêm thì chọn một đề tự luyện hoặc xem video ôn tập bên dưới.")));
+        return;
+      }
+      box.classList.remove("clear");
+      head.append("Hôm nay em có ", h("b", {}, items.length + " việc"), " cần làm. Làm xong việc nào, việc đó tự biến khỏi danh sách.");
+      items.forEach((it, i) => list.append(h("li", { class: "todo-i " + it.k + (it.urgent ? " urgent" : ""), style: "--i:" + i, role: "button", tabindex: "0",
+          onclick: it.go, onkeydown: (e) => { if (e.key === "Enter") it.go(); } },
+        h("span", { class: "todo-box", "aria-hidden": "true" }),
+        h("span", { class: "todo-tx" }, h("b", {}, it.t), h("small", {}, it.s)),
+        h("span", { class: "todo-go" }, it.cta))));
+    };
+    draw();
+    box.append(head, list);
+    liveProm.then((ls) => { (ls || []).filter((x) => x.status === "live").forEach((x) => items.push({ k: "live", ic: "●", pri: -1, t: "Thầy đang dạy live: " + x.title, s: "Lớp đã bắt đầu, vào ngay để không lỡ bài", go: () => renderLive(x.id), cta: "Vào lớp" }));
+      if (items.some((x) => x.k === "live")) { box.classList.remove("clear"); draw(); } });
+    return box;
+  }
+  // đếm số chạy dần lên (hiệu ứng)
+  function countUp(el, to, ms = 900) {
+    to = +to || 0;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || to <= 0) { el.textContent = KT.num(to); return; }
+    const t0 = performance.now();
+    const step = (t) => { const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3); el.textContent = KT.num(Math.round(to * e)); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+  // thẻ hồ sơ: màu, khung, hiệu ứng theo bậc danh hiệu; KN và danh hiệu cộng dồn, không reset
   function levelCard() {
-    const I = KT.levelInfo(home.xp), rk = home.rank || {};
-    return h("div", { class: "lvcard" },
-      KT.levelBadge(I.L),
-      h("div", { class: "lv-tx" },
-        h("small", {}, "Cấp " + I.L), h("b", {}, I.title),
-        h("div", { class: "xpbar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(I.need), "aria-valuenow": String(I.cur) }, h("i", { style: "width:" + Math.round(I.pct * 100) + "%" })),
-        h("span", {}, KT.num(I.cur) + " / " + KT.num(I.need) + " KN · còn " + KT.num(I.toNext) + " KN lên cấp " + (I.L + 1)),
-        I.nextTitle ? h("span", { class: "lv-next" }, "Cấp " + I.nextTitleAt + ": " + I.nextTitle) : null,
-        rk.week_rank ? h("span", { class: "lv-rank" }, "Hạng " + rk.week_rank + " tuần này") : null));
+    const I = KT.levelInfo(home.xp), rk = home.rank || {}, tier = KT.tierOf(I.L), st = home.student || {};
+    const total = h("b", {}, "0"), bar = h("i", { style: "width:0%" });
+    const card = h("div", { class: "pcard pt" + tier, role: "button", tabindex: "0", title: "Xem hành trình danh hiệu",
+      onclick: () => titleJourney(), onkeydown: (e) => { if (e.key === "Enter") titleJourney(); } },
+      h("div", { class: "pc-top" },
+        KT.levelBadge(I.L, "lg"),
+        h("div", { class: "pc-id" },
+          h("span", { class: "pc-lv" }, "Cấp " + I.L + ", bậc " + (tier + 1) + " trên 9"),
+          h("b", { class: "pc-title" }, I.title),
+          h("span", { class: "pc-name" }, st.name + (st.class ? ", lớp " + st.class : "")))),
+      h("div", { class: "pc-xp" },
+        h("div", { class: "pc-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(I.need), "aria-valuenow": String(I.cur) }, bar),
+        h("span", {}, "Còn " + KT.num(I.toNext) + " KN nữa lên cấp " + (I.L + 1))),
+      h("div", { class: "pc-stats" },
+        h("div", {}, total, h("span", {}, "KN tích luỹ")),
+        h("div", {}, h("b", {}, String(home.streak || 0)), h("span", {}, "ngày liên tiếp")),
+        h("div", {}, h("b", {}, rk.all_rank ? "#" + rk.all_rank : "–"), h("span", {}, "hạng toàn trường"))),
+      h("div", { class: "pc-foot" }, I.nextTitle ? "Đến cấp " + I.nextTitleAt + " em nhận danh hiệu " + I.nextTitle + "." : "Em đã đạt danh hiệu cao nhất."), h("span", { class: "pc-more" }, "Xem hành trình danh hiệu"));
+    requestAnimationFrame(() => setTimeout(() => { bar.style.width = Math.round(I.pct * 100) + "%"; countUp(total, home.xp); }, 250));
+    return card;
+  }
+  // hành trình 9 danh hiệu
+  function titleJourney() {
+    const I = KT.levelInfo(home.xp), ti = KT.tierOf(I.L);
+    const list = h("ol", { class: "tj" });
+    KT.TITLES.forEach(([lv, name], i) => {
+      const next = KT.TITLES[i + 1], need = KT.lvXp(lv), got = i < ti ? "done" : i === ti ? "now" : "lock";
+      const range = next ? "Cấp " + lv + "–" + (next[0] - 1) : "Cấp " + lv + " trở lên";
+      list.append(h("li", { class: "tj-" + got, style: "--i:" + i },
+        KT.levelBadge(lv, "md"),
+        h("div", { class: "tj-tx" }, h("b", {}, name), h("span", {}, range + ", từ " + KT.num(need) + " KN")),
+        h("span", { class: "tj-st" }, got === "done" ? "✓ Đã đạt" : got === "now" ? "Em đang ở đây" : "Còn " + KT.num(need - home.xp) + " KN")));
+    });
+    let close;
+    close = KT.modal([h("div", { class: "tj-head" }, h("h3", {}, "Hành trình danh hiệu"),
+        h("p", { class: "sub" }, "Kinh nghiệm (KN) được cộng dồn từ mọi bài em làm và không bao giờ bị trừ hay làm lại. Danh hiệu đã đạt sẽ theo em mãi. Riêng bảng “Đua top tuần” mới tính lại từ thứ Hai.")),
+      list, h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => close() }, "Đóng"))]);
+    setTimeout(() => { const cur = list.querySelector(".tj-now"); if (cur) cur.scrollIntoView({ block: "center" }); }, 60);
   }
   function fameBlock() {
     const box = h("div", { class: "fame" });
@@ -288,12 +372,13 @@
       box.innerHTML = "";
       const rk = home.rank || {};
       const tabs = h("div", { class: "filters", role: "tablist" },
-        [["week", "Tuần này"], ["all", "Mọi thời gian"]].map(([k, l]) => h("button", { class: fameTab === k ? "on" : "", role: "tab", "aria-selected": String(fameTab === k), onclick: () => { fameTab = k; draw(); } }, l)));
+        [["all", "🏆 Tổng tích luỹ"], ["week", "⚡ Đua top tuần"]].map(([k, l]) => h("button", { class: fameTab === k ? "on" : "", role: "tab", "aria-selected": String(fameTab === k), onclick: () => { fameTab = k; draw(); } }, l)));
       const rows = fameTab === "week" ? lboard.week : lboard.all;
       const myRank = fameTab === "week" ? rk.week_rank : rk.all_rank;
       box.append(h("div", { class: "fame-head" }, tabs,
         h("span", { class: "fame-me" }, rk.hidden ? "Em đang được ẩn khỏi bảng vinh danh." : myRank ? "Em đang xếp hạng " + myRank + (fameTab === "week" ? " tuần này, " + KT.num(rk.week_xp) + " KN" : "") : "Làm bài để có tên trên bảng.")),
-        KT.rankList(rows, fameTab === "week" ? "w" : "xp", { empty: fameTab === "week" ? "Tuần mới vừa bắt đầu. Ai làm bài đầu tiên sẽ đứng đầu bảng!" : undefined }));
+        KT.rankList(rows, fameTab === "week" ? "w" : "xp", { empty: fameTab === "week" ? "Tuần mới vừa bắt đầu. Ai làm bài đầu tiên sẽ đứng đầu bảng!" : undefined }),
+        h("p", { class: "fame-note" }, fameTab === "week" ? "Bảng đua top tuần tính lại từ thứ Hai. KN và danh hiệu của em vẫn được giữ nguyên." : "Xếp theo tổng KN tích luỹ từ trước đến nay — không bao giờ reset."));
     };
     draw();
     return h("div", {}, h("div", { class: "section-t" }, "Bảng vinh danh"), box);
@@ -313,7 +398,7 @@
   function levelUp(from, I) {
     const newTitle = KT.titleOf(from) !== I.title;
     let close;
-    close = KT.modal([h("div", { class: "lvup" },
+    close = KT.modal([h("div", { class: "lvup pt" + KT.tierOf(I.L) },
       h("div", { class: "lvup-burst", "aria-hidden": "true" }, Array.from({ length: 14 }, (_, i) => h("i", { style: "--a:" + (i * 360 / 14) + "deg" }))),
       KT.levelBadge(I.L, "xl"),
       h("h3", {}, "Lên cấp " + I.L + "!"),
@@ -969,43 +1054,41 @@
   const stopLive = () => { clearTimeout(liveTimer); liveTimer = null; clearInterval(liveWm); liveWm = null; };
   const liveTab = (() => { let t = null; try { t = sessionStorage.getItem("kt_tab"); if (!t) { t = Math.random().toString(36).slice(2, 10); sessionStorage.setItem("kt_tab", t); } } catch (e) { t = Math.random().toString(36).slice(2, 10); } return t; })();
   const WD = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
-  const liveWhen = (s) => { const d = new Date(s); return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " · " + WD[d.getDay()] + " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }); };
+  const liveWhen = (s) => { const d = new Date(s); return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + ", " + WD[d.getDay()].toLowerCase() + " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }); };
   const liveLeft = (ms) => {
     if (ms <= 0) return "sắp bắt đầu";
     const m = Math.round(ms / 60000), d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60;
     return "còn " + (d ? d + " ngày " : "") + (hh ? hh + " giờ " : "") + (!d ? mm + " phút" : "");
   };
-  const lessonChip = (s) => (s.g && s.l && LESSON[s.g + "-" + s.l] ? h("span", { class: "lv-chip" }, KT.lessonName(s.g + "-" + s.l, true)) : null);
+  const lessonChip = (s) => (s.g && s.l && LESSON[s.g + "-" + s.l] ? h("span", { class: "lv-chip" }, KT.lessonName(s.g + "-" + s.l, true).replace(" · ", ", ")) : null);
 
   // khối "Lớp học trực tuyến" trên trang chủ
-  function liveSlot() {
+  function liveSlot(prom) {
     const box = h("div", {});
-    rpc("live_list").then((list) => {
+    (prom || rpc("live_list")).then((list) => {
       if (!list || !list.length) return;
       const now = Date.now() + clockSkew;
       const live = list.filter((s) => s.status === "live");
       const soon = list.filter((s) => s.status === "scheduled");
       const done = list.filter((s) => s.status === "ended").reverse();
-      live.forEach((s) => box.append(h("div", { class: "lv-hero" },
-        h("div", { class: "lv-hero-l" },
-          h("span", { class: "lv-badge" }, h("i", {}), "ĐANG LIVE"),
-          h("h2", {}, s.title),
-          h("p", {}, [lessonChip(s), h("span", {}, "Bắt đầu " + liveWhen(s.started_at || s.starts_at))])),
-        h("button", { class: "btn lv-join", onclick: () => renderLive(s.id) }, "▶  Vào lớp ngay"))));
-      if (soon.length || done.length) {
+      if (live.length || soon.length || done.length) {
         box.append(h("div", { class: "section-t" }, "Lớp học trực tuyến"));
         const row = h("div", { class: "lv-cards" });
+        live.forEach((s) => row.append(h("div", { class: "lv-card on" },
+          h("div", { class: "lv-date" }, h("i", {}), h("span", {}, "Live")),
+          h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, "Thầy đang dạy, bắt đầu lúc " + liveWhen(s.started_at || s.starts_at))),
+          h("button", { class: "btn sm lv-join", onclick: () => renderLive(s.id) }, "Vào lớp"))));
         soon.forEach((s) => {
           const ms = new Date(s.starts_at).getTime() - now;
           row.append(h("div", { class: "lv-card" + (ms < 3600e3 ? " near" : "") },
             h("div", { class: "lv-date" }, h("b", {}, new Date(s.starts_at).getDate()), h("span", {}, "Th" + (new Date(s.starts_at).getMonth() + 1))),
-            h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, liveWhen(s.starts_at) + " · " + s.minutes + " phút"),
+            h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, liveWhen(s.starts_at) + " (" + s.minutes + " phút)"),
               h("span", { class: "lv-left" }, liveLeft(ms))),
             h("button", { class: "btn ghost sm", onclick: () => renderLive(s.id) }, "Xem")));
         });
         done.slice(0, 3).forEach((s) => row.append(h("div", { class: "lv-card past" },
           h("div", { class: "lv-date" }, h("b", {}, new Date(s.starts_at).getDate()), h("span", {}, "Th" + (new Date(s.starts_at).getMonth() + 1))),
-          h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, "Đã học · " + liveWhen(s.starts_at))),
+          h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, "Đã học lúc " + liveWhen(s.starts_at))),
           h("button", { class: "btn ghost sm", onclick: () => renderLive(s.id) }, "Kết quả"))));
         box.append(row);
       }
@@ -1098,8 +1181,8 @@
       } else {
         const cd = h("div", { class: "lv-count" });
         stage.append(h("div", { class: "lv-wait" },
-          h("span", { class: "lv-badge soon" }, "SẮP DIỄN RA"), h("h2", {}, s.title),
-          h("p", {}, "Bắt đầu lúc " + liveWhen(s.starts_at) + " · " + s.minutes + " phút"), lessonChip(s), cd,
+          h("span", { class: "lv-badge soon" }, "Sắp diễn ra"), h("h2", {}, s.title),
+          h("p", {}, "Bắt đầu lúc " + liveWhen(s.starts_at) + ", học " + s.minutes + " phút"), lessonChip(s), cd,
           h("p", { class: "sub" }, "Em cứ để trang này mở. Khi thầy bắt đầu, video sẽ tự hiện.")));
         const upd = () => {
           const ms = Math.max(0, new Date(s.starts_at).getTime() - (Date.now() + clockSkew));
@@ -1109,7 +1192,7 @@
         upd(); liveWm = setInterval(upd, 1000);
       }
       statusEl.className = "lv-badge" + (s.status === "live" ? "" : s.status === "ended" ? " off" : " soon");
-      statusEl.innerHTML = ""; statusEl.append(s.status === "live" ? h("i", {}) : "", s.status === "live" ? "ĐANG LIVE" : s.status === "ended" ? "ĐÃ KẾT THÚC" : "SẮP DIỄN RA");
+      statusEl.innerHTML = ""; statusEl.append(s.status === "live" ? h("i", {}) : "", s.status === "live" ? "Đang live" : s.status === "ended" ? "Đã kết thúc" : "Sắp diễn ra");
     }
 
     // câu hỏi nhanh

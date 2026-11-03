@@ -439,10 +439,36 @@
     return { L, xp, title: KT.titleOf(L), cur: xp - a, need: b - a, toNext: b - xp, pct: (xp - a) / (b - a), nextTitle: nx ? nx[1] : null, nextTitleAt: nx ? nx[0] : null };
   };
   KT.num = (n) => (n || 0).toLocaleString("vi-VN");
+  // 9 bậc danh hiệu: mỗi bậc một màu, một biểu tượng; KN cộng dồn mãi, không bao giờ reset
+  KT.TIER_META = [
+    { k: "sprout", a: "#a79ff0", b: "#5d54b8", ring: "#d9d3f5" },
+    { k: "book", a: "#8a6dff", b: "#4527a0", ring: "#cbbcff" },
+    { k: "tool", a: "#22b8d6", b: "#0b5f7a", ring: "#a6ecfa" },
+    { k: "shield", a: "#2fbf71", b: "#0f6a3d", ring: "#a7f0c6" },
+    { k: "compass", a: "#5b7cff", b: "#1d2c8f", ring: "#b9c6ff" },
+    { k: "flag", a: "#ff9a1f", b: "#b84a00", ring: "#ffd59e" },
+    { k: "sword", a: "#ff4d4d", b: "#8e0e1e", ring: "#ffc2c2" },
+    { k: "crown", a: "#ffd23f", b: "#b37400", ring: "#fff1a8" },
+    { k: "star", a: "#9b5cff", b: "#1d1934", ring: "#ffd23f" }];
+  const ICONS = {
+    sprout: '<path d="M30 46V31"/><path d="M30 33c-1-7-6-10-12-10 0 7 5 11 12 10z"/><path d="M30 31c1-8 7-12 14-11 0 8-6 12-14 11z"/>',
+    book: '<path d="M17 22h11a3 3 0 0 1 3 3v19a2 2 0 0 0-2-2H17z"/><path d="M43 22H32a3 3 0 0 0-3 3v19a2 2 0 0 1 2-2h12z"/>',
+    tool: '<path d="M38 18a7 7 0 0 0-8 9L18 39l3 3 12-12a7 7 0 0 0 9-8l-4 4-4-1-1-4z"/>',
+    shield: '<path d="M30 17l12 4v9c0 8-5 13-12 16-7-3-12-8-12-16v-9z"/><path d="M25 31l4 4 7-8"/>',
+    compass: '<circle cx="30" cy="32" r="13"/><path d="M35 26l-3 8-7 3 3-8z"/>',
+    flag: '<path d="M21 46V18"/><path d="M21 19h18l-4 6 4 6H21"/>',
+    sword: '<path d="M40 18l-14 14M22 36l-3 3 3 3 3-3M24 30l6 6M42 16l-1 5-4 1"/>',
+    crown: '<path d="M17 40l-2-17 9 7 6-11 6 11 9-7-2 17z"/><path d="M18 44h24"/>',
+    star: '<path d="M30 15l4.5 10 10.5 1-8 7 2.5 10.5L30 38l-9.5 5.5L23 33l-8-7 10.5-1z"/>' };
+  KT.tierMeta = (L) => KT.TIER_META[KT.tierOf(L)];
   KT.levelBadge = (L, cls) => {
-    const tier = KT.tierOf(L);
+    const tier = KT.tierOf(L), m = KT.TIER_META[tier], gid = "lg" + Math.random().toString(36).slice(2, 8);
     return h("span", { class: "lvbadge t" + tier + (cls ? " " + cls : ""), title: "Cấp " + L + " · " + KT.titleOf(L), html:
-      '<svg viewBox="0 0 60 66" aria-hidden="true"><path d="M30 2 56 17v32L30 64 4 49V17z"/></svg><b>' + L + "</b>" });
+      '<svg viewBox="0 0 60 66" aria-hidden="true"><defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + m.a + '"/><stop offset="1" stop-color="' + m.b + '"/></linearGradient></defs>'
+      + '<path class="hx" d="M30 2 56 17v32L30 64 4 49V17z" fill="url(#' + gid + ')" stroke="' + m.ring + '"/>'
+      + '<path class="hx-in" d="M30 8 51 20v26L30 58 9 46V20z"/>'
+      + '<g class="ico" transform="translate(19.5 6.5) scale(.35)">' + ICONS[m.k] + '</g></svg><b>' + L + "</b>"
+      + (tier >= 7 ? '<i class="lv-crown" aria-hidden="true"></i>' : "") });
   };
   KT.rankList = (rows, key, opt = {}) => {
     if (!rows || !rows.length) return h("div", { class: "empty" }, opt.empty || "Chưa có ai trên bảng. Làm bài để ghi tên mình đầu tiên!");
@@ -451,7 +477,7 @@
       return h("li", { class: i < 3 ? "top" + (i + 1) : "" },
         h("span", { class: "rk" }, String(i + 1)),
         KT.levelBadge(L, "sm"),
-        h("span", { class: "nm" }, h("b", {}, r.name), h("small", {}, KT.titleOf(L) + (r.class ? " · Lớp " + r.class : ""))),
+        h("span", { class: "nm" }, h("b", {}, r.name), h("small", {}, KT.titleOf(L) + (r.class ? ", lớp " + r.class : ""))),
         h("span", { class: "xpv" }, KT.num(r[key]), h("small", {}, " KN")));
     }));
   };

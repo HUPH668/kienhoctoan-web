@@ -62,7 +62,7 @@
   let liveCur = null;
   const LWD = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
   const lwhen = (s) => { const d = new Date(s); return LWD[d.getDay()] + " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) + " · " + d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }); };
-  const lstatus = (s) => s === "live" ? h("span", { class: "lv-badge" }, h("i", {}), "ĐANG LIVE") : s === "ended" ? h("span", { class: "lv-badge off" }, "ĐÃ KẾT THÚC") : h("span", { class: "lv-badge soon" }, "SẮP DIỄN RA");
+  const lstatus = (s) => s === "live" ? h("span", { class: "lv-badge" }, h("i", {}), "Đang live") : s === "ended" ? h("span", { class: "lv-badge off" }, "Đã kết thúc") : h("span", { class: "lv-badge soon" }, "Sắp diễn ra");
   const mmss = (sec) => { sec = +sec || 0; const m = Math.floor(sec / 60); return m >= 60 ? Math.floor(m / 60) + " giờ " + (m % 60) + "′" : m + "′" + String(sec % 60).padStart(2, "0"); };
 
   async function tabLive(el) {
