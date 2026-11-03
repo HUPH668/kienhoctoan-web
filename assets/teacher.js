@@ -108,10 +108,28 @@
       admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
+    w.append(dashHead());
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
     ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+  }
+
+  // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
+  function dashHead() {
+    const me = ov.me || {}, hr = new Date().getHours();
+    const part = hr < 11 ? "buổi sáng" : hr < 14 ? "buổi trưa" : hr < 18 ? "buổi chiều" : "buổi tối";
+    const t = (me.title || "").trim(), last = String(me.name || "").trim().split(/\s+/).pop();
+    const call = !t ? (me.name || "") : t.split(/\s+/).length > 1 ? t : t + " " + last;
+    const now = new Date(ov.server_now || Date.now()).getTime();
+    const open = ov.assignments.filter((a) => new Date(a.opens_at).getTime() <= now && new Date(a.closes_at).getTime() > now);
+    const nSt = ov.classes.reduce((s, c) => s + (+c.n || 0), 0), nDoing = ov.assignments.reduce((s, a) => s + (+a.n_doing || 0), 0);
+    const tile = (n, l, go) => h(go ? "button" : "div", Object.assign({ class: "dh-k" }, go ? { type: "button", onclick: go } : {}), h("b", { "data-count": n }, KT.num(n)), h("span", {}, l));
+    const goTab = (k) => () => { tab = k; store.set("kt_t_tab", k); render(); };
+    return h("section", { class: "dash-head" },
+      h("div", { class: "dh-tx" }, h("h1", {}, "Chào " + part + ", " + call), h("p", {}, open.length ? "Đang có " + open.length + " bài mở cho học sinh làm." : "Hiện chưa có bài nào đang mở. Giao đề mới ở tab Giao đề.")),
+      h("div", { class: "dh-ks" }, tile(ov.classes.length, "lớp đang dạy", goTab("classes")), tile(nSt, "học sinh", goTab("classes")),
+        tile(open.length, "bài đang mở", goTab("monitor")), tile(nDoing, "em đang làm bài", goTab("monitor"))));
   }
 
   /* ================================================================ GIÁO VIÊN (chỉ quản trị) */

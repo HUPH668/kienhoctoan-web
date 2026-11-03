@@ -6,13 +6,27 @@
   const KT = (window.KT = {});
 
   /* ---------- DOM ---------- */
+  // nút đang xử lí: khi hàm bấm nút / gửi form trả về Promise, nút hiện vòng xoay và tạm khoá cho tới khi xong
+  const busyWrap = (el, k, fn) => function (e) {
+    const r = fn.call(this, e);
+    if (r && typeof r.then === "function") {
+      const b = k === "onsubmit" ? el.querySelector("button[type=submit], button:not([type])") : el;
+      if (b && !b.classList.contains("is-loading")) {
+        const t = setTimeout(() => b.classList.add("is-loading"), 120);   // việc nhanh thì không nháy vòng xoay
+        b.setAttribute("aria-busy", "true");
+        const done = () => { clearTimeout(t); b.classList.remove("is-loading"); b.removeAttribute("aria-busy"); };
+        r.then(done, done);
+      }
+    }
+    return r;
+  };
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
       if (v == null || v === false) continue;
       if (k === "class") el.className = v;
       else if (k === "html") el.innerHTML = v;
-      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), (k === "onclick" && tag === "button") || k === "onsubmit" ? busyWrap(el, k, v) : v);
       else el.setAttribute(k, v === true ? "" : v);
     }
     for (const c of kids.flat()) if (c != null && c !== false) el.append(c.nodeType ? c : document.createTextNode(c));
@@ -216,10 +230,18 @@
     const box = h("div", { class: "modal" + (opts.wide ? " wide" : ""), role: "dialog", "aria-modal": "true" }, content);
     const bg = h("div", { class: "modal-bg", onclick: (e) => { if (e.target === bg && !opts.sticky) close(); } }, box);
     const onKey = (e) => { if (e.key === "Escape" && !opts.sticky) close(); };
-    const close = () => { bg.remove(); document.removeEventListener("keydown", onKey); };
+    const prevFocus = document.activeElement;
+    let closed = false;
+    const close = () => {
+      if (closed) return; closed = true; document.removeEventListener("keydown", onKey);
+      bg.classList.add("out"); setTimeout(() => bg.remove(), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 170);
+      if (prevFocus && prevFocus.focus && document.contains(prevFocus)) try { prevFocus.focus({ preventScroll: true }); } catch (e) { }
+    };
     document.addEventListener("keydown", onKey);
     root.append(bg);
     KT.typeset(bg, opts.figs);
+    const f = box.querySelector("input:not([type=hidden]), select, textarea, button.btn:not(.ghost)") ;
+    if (f && !opts.noFocus) setTimeout(() => { try { f.focus({ preventScroll: true }); } catch (e) { } }, 30);
     return close;
   };
   KT.confirm = (title, html, okLabel, onOk, cancel = "Huỷ") => {
@@ -233,7 +255,7 @@
     if (!root) { root = h("div", { id: "toastRoot", class: "toasts", "aria-live": "polite" }); document.body.append(root); }
     const t = h("div", { class: "toast " + kind }, msg);
     root.append(t);
-    setTimeout(() => t.remove(), kind === "bad" ? 6000 : 3000);
+    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 220); }, kind === "bad" ? 6000 : 3000);
   };
 
   /* ---------- theme ---------- */
@@ -416,12 +438,25 @@
   KT.PHONE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg>';
   KT.brandPanel = (who) => {
     const B = KT.BRAND;
-    return h("aside", { class: "brandpanel" },
+    const GLYPHS = ["∫", "Σ", "π", "√x", "f(x)", "Δ", "x²", "∞", "θ", "log", "≥", "∈ℝ"];
+    const sky = h("div", { class: "bp-sky", "aria-hidden": "true" }, GLYPHS.map((g, i) => h("span", { class: "bp-g", style: "--i:" + i }, g)));
+    const stats = h("div", { class: "bp-stats", hidden: true });
+    KT.api.rpc("bank_stats", {}).then((rows) => {
+      if (!Array.isArray(rows) || !rows.length) return;
+      const nq = rows.reduce((s, r) => s + (+r.n || 0), 0);
+      const gs = [...new Set(rows.map((r) => +r.g).filter((g) => g >= 1 && g <= 12))].sort((a, b) => a - b);
+      const ls = new Set(rows.filter((r) => +r.g >= 1).map((r) => r.g + "-" + r.l)).size;
+      const st = (n, l) => h("div", { class: "bp-st" }, h("b", { "data-count": n }, KT.num(n)), h("span", {}, l));
+      stats.append(st(nq, "câu hỏi trong ngân hàng"), st(ls, "bài học có đề luyện"), h("div", { class: "bp-st" }, h("b", {}, gs[0] + "–" + gs[gs.length - 1]), h("span", {}, "khối lớp")));
+      stats.hidden = false;
+      if (KT.ui) KT.ui.count(stats);
+    }).catch(() => { });
+    return h("aside", { class: "brandpanel" }, sky,
       h("div", { class: "bp-logo" }, h("span", { class: "mark lg", html: KT.MARK_SVG }), h("span", { class: "bp-name" }, B.name)),
       h("p", { class: "bp-saying" }, "Kiến tha lâu cũng đầy tổ."),
       h("p", { class: "bp-text" }, who === "teacher"
         ? "Giao đề, theo dõi lớp làm bài trực tiếp và xem đa giác điểm mạnh – điểm yếu của từng em."
-        : "Mỗi ngày một bài kiểm tra ngắn. Nộp bài xong em biết ngay mình vững phần nào, cần luyện thêm phần nào."),
+        : "Mỗi ngày một bài kiểm tra ngắn. Nộp bài xong em biết ngay mình vững phần nào, cần luyện thêm phần nào."), stats,
       B.teacher || B.phone ? h("div", { class: "bp-contact" },
         B.teacher ? h("b", {}, B.teacher) : null,
         B.phone ? h("a", { class: "bp-call", href: "tel:" + B.phone, html: KT.PHONE_SVG + "<span>" + KT.phoneFmt(B.phone) + "</span>" }) : null) : null);
@@ -431,10 +466,17 @@
     const hp = document.getElementById("hPhone");
     if (hp && B.phone) { hp.href = "tel:" + B.phone; hp.innerHTML = KT.PHONE_SVG + "<span>" + KT.phoneFmt(B.phone) + "</span>"; hp.title = "Gọi " + (B.teacher || "") ; hp.hidden = false; }
     const ft = document.getElementById("siteFoot");
-    if (ft) ft.append(h("div", { class: "wrap" },
-      h("div", { class: "f-brand" }, h("span", { class: "mark sm", html: KT.MARK_SVG }), h("b", {}, B.name)),
-      h("div", { class: "f-contact" }, B.teacher ? h("span", {}, B.teacher) : null,
-        B.phone ? h("a", { href: "tel:" + B.phone }, KT.phoneFmt(B.phone)) : null)));
+    if (ft) ft.append(h("div", { class: "wrap f-grid" },
+      h("div", { class: "f-col f-about" },
+        h("div", { class: "f-brand" }, h("span", { class: "mark sm", html: KT.MARK_SVG }), h("b", {}, B.name)),
+        h("p", {}, "Luyện và kiểm tra Toán từ lớp 6 đến lớp 12, thi tốt nghiệp THPT và đánh giá năng lực. Làm xong biết ngay mình vững phần nào, yếu phần nào.")),
+      h("nav", { class: "f-col", "aria-label": "Trang" }, h("b", { class: "f-h" }, "Vào học"),
+        h("a", { href: "./" }, "Trang học sinh"), h("a", { href: "giaovien.html" }, "Trang giáo viên")),
+      h("div", { class: "f-col" }, h("b", { class: "f-h" }, "Liên hệ"),
+        B.teacher ? h("span", {}, B.teacher) : null,
+        B.phone ? h("a", { href: "tel:" + B.phone }, "Gọi " + KT.phoneFmt(B.phone)) : null,
+        B.phone ? h("a", { href: "https://zalo.me/" + B.phone, target: "_blank", rel: "noopener" }, "Nhắn Zalo") : null)),
+      h("div", { class: "wrap f-bottom" }, h("span", {}, "© " + new Date().getFullYear() + " " + B.name), h("span", {}, "Kiến tha lâu cũng đầy tổ.")));
   })();
   /* ---------------- thăng cấp ---------------- */
   KT.TITLES = [[1, "Kiến Tập Sự"], [3, "Kiến Chăm Chỉ"], [5, "Kiến Thợ"], [8, "Kiến Lính"], [11, "Kiến Trinh Sát"],
