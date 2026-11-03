@@ -95,10 +95,45 @@
   async function beat() { if (!cur || cur.status !== "doing") return null; try { const r = await rpc("save_answers", { p_attempt: cur.id, p_answers: [] }); takeEnd(r); return r; } catch (e) { return null; } }
   function setWho() {
     who.innerHTML = "";
+    document.querySelector(".top").classList.toggle("has-umenu", !!sess);
     if (!sess) return;
-    who.append(h("span", { class: "who-n" }, h("b", {}, sess.name), h("small", {}, (sess.class ? "Lớp " + sess.class + ", mã " : "Mã ") + sess.code)),
-      window.KHCalc ? window.KHCalc.button() : null,
-      h("button", { class: "btn ghost sm", onclick: () => { if (cur && cur.status === "doing") KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); } }, "Đăng xuất"));
+    const inExam = cur && cur.status === "doing";
+    const I = home ? KT.levelInfo(home.xp) : null;
+    const name = (home && home.student.name) || sess.name, cls = (home && home.student.class) || sess.class;
+    const ini = String(name || "?").trim().split(/\s+/).slice(-1)[0].charAt(0).toUpperCase();
+    // ô thả xuống dùng chung: mở/đóng bằng chuột, bàn phím, bấm ra ngoài hoặc Esc
+    const dd = (btn, panel) => {
+      const wrap = h("div", { class: "ddw" }, btn, panel);
+      const set = (o) => { wrap.classList.toggle("open", o); btn.setAttribute("aria-expanded", String(o)); if (o) { const f = panel.querySelector("button, a"); if (f) setTimeout(() => f.focus({ preventScroll: true }), 30); } };
+      btn.addEventListener("click", (e) => { e.stopPropagation(); const o = !wrap.classList.contains("open"); document.querySelectorAll(".ddw.open").forEach((x) => x !== wrap && x.classList.remove("open")); set(o); });
+      panel.addEventListener("click", (e) => { if (e.target.closest("button, a")) set(false); });
+      document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) set(false); });
+      wrap.addEventListener("keydown", (e) => { if (e.key === "Escape") { set(false); btn.focus(); } });
+      return wrap;
+    };
+    if (home && !inExam) {
+      const items = todoItems();
+      const bell = h("button", { type: "button", class: "iconbtn bellbtn", "aria-label": "Việc cần làm" + (items.length ? ", " + items.length + " việc" : ""), "aria-expanded": "false", "aria-haspopup": "true" },
+        svg("bell"), items.length ? h("i", { class: "bdg" }, String(items.length)) : null);
+      const pn = h("div", { class: "dd dd-bell", role: "menu" }, h("div", { class: "dd-h" }, items.length ? "Em có " + items.length + " việc cần làm" : "Không có việc nào cần làm"),
+        items.length ? items.slice(0, 6).map((it) => h("button", { type: "button", class: "dd-i", role: "menuitem", onclick: () => leave(it.go) },
+          h("span", { class: "dd-ic m-" + it.k, "aria-hidden": "true" }, MIC[it.k] || "•"), h("span", { class: "dd-t" }, h("b", {}, it.t), h("small", {}, it.st + ". " + it.s))))
+          : h("p", { class: "dd-empty" }, "Hôm nay em đã xong hết việc."),
+        h("button", { type: "button", class: "dd-more", onclick: () => go("home") }, "Xem trang chủ"));
+      who.append(dd(bell, pn));
+    }
+    if (window.KHCalc) who.append(window.KHCalc.button());
+    const av = h("button", { type: "button", class: "avbtn", "aria-label": "Tài khoản của " + name, "aria-expanded": "false", "aria-haspopup": "true" },
+      h("span", { class: "av pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("span", { class: "av-n" }, h("b", {}, name), h("small", {}, I ? "Cấp " + I.L + ", " + I.title : cls ? "Lớp " + cls : sess.code)), svg("chev", "chev"));
+    const out = () => { if (inExam) KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); };
+    const mi = (ic, t, fn) => h("button", { type: "button", class: "dd-i", role: "menuitem", onclick: fn }, svg(ic), h("span", { class: "dd-t" }, h("b", {}, t)));
+    const um = h("div", { class: "dd dd-user", role: "menu" },
+      h("div", { class: "dd-prof" }, h("span", { class: "av lg pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("div", {}, h("b", {}, name), h("small", {}, (cls ? "Lớp " + cls + ", mã " : "Mã ") + sess.code), I ? h("small", {}, "Cấp " + I.L + ", " + I.title + ", " + KT.num(I.xp) + " KN") : null)),
+      inExam ? null : [mi("achieve", "Thành tích của em", () => go("achieve")), mi("book", "Sổ câu sai", () => go("book")), mi("tests", "Bài kiểm tra", () => go("tests"))],
+      window.KHCalc ? mi("calc", "Máy tính cầm tay", () => window.KHCalc.open()) : null,
+      mi("moon", "Đổi giao diện sáng/tối", () => document.getElementById("themeBtn").click()),
+      h("div", { class: "dd-sep" }), mi("out", "Đăng xuất", out));
+    who.append(dd(av, um));
   }
   document.getElementById("goHome").addEventListener("click", () => { if (cur && cur.status === "doing") { KT.confirm("Rời bài đang làm?", "Bài làm được lưu trên máy chủ, em có thể quay lại làm tiếp (đồng hồ vẫn chạy).", "Về trang chủ", () => { flush(); renderHome(); }); } else if (sess) renderHome(); });
 
@@ -191,68 +226,510 @@
     name.focus();
   }
 
-  /* ---------------- trang chủ ---------------- */
-  async function renderHome() {
-    stopTimers(); cur = null; setWho(); window.scrollTo(0, 0);
-    app.innerHTML = ""; app.append(h("div", { class: "wrap loading" }, "Đang tải…"));
-    try {
-      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10, p_token: sess.token }).catch(() => null), loadVids(),
-        dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {}))]);
-      clockSkew = new Date(home.server_now).getTime() - Date.now();
-      if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
-    } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap empty" }, "Không tải được dữ liệu. ", h("button", { class: "btn sm", onclick: renderHome }, "Thử lại"))); return; }
-    app.innerHTML = "";
-    const w = h("section", { class: "wrap" });
-    const liveProm = rpc("live_list").catch(() => []);
-    w.append(h("div", { class: "hero nb" }, h("div", { class: "hero-tx" }, h("h1", { class: "nb-greet" }, greet() + " " + home.student.name.split(" ").slice(-1)[0] + "!"), todoBox(liveProm)), levelCard()));
+  /* ---------------- khu học sinh: 5 mục (Trang chủ, Học tập, Bài kiểm tra, Sổ câu sai, Thành tích) ---------------- */
+  let view = "home", homeAt = 0, liveProm = null;
+  const NAV = [["home", "Trang chủ"], ["learn", "Học tập"], ["tests", "Bài kiểm tra"], ["book", "Sổ câu sai"], ["achieve", "Thành tích"]];
+  const SV = {
+    home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V20h13V9.8"/><path d="M10 20v-5.5h4V20"/>',
+    learn: '<path d="M3.5 5.5h6A2.5 2.5 0 0 1 12 8v12a2 2 0 0 0-2-2H3.5z"/><path d="M20.5 5.5h-6A2.5 2.5 0 0 0 12 8v12a2 2 0 0 1 2-2h6.5z"/>',
+    tests: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
+    book: '<path d="M6 3.5h10.5A2.5 2.5 0 0 1 19 6v14.5H7.5A2.5 2.5 0 0 1 5 18V4.5a1 1 0 0 1 1-1z"/><path d="M5 18a2.5 2.5 0 0 1 2.5-2.5H19"/><path d="m9.5 7.5 4 4m0-4-4 4"/>',
+    achieve: '<path d="M8 3.5h8V9a4 4 0 0 1-8 0z"/><path d="M16 5h3.5v1.5A3.5 3.5 0 0 1 16 10M8 5H4.5v1.5A3.5 3.5 0 0 0 8 10"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
+    bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    chev: '<path d="m7 10 5 5 5-5"/>', out: '<path d="M14 4h4.5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16.5 5.5 12 10 7.5M5.5 12H15"/>',
+    calc: '<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8 6h8v3H8z"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/>',
+    moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  };
+  const svg = (k, cls) => h("span", { class: "si" + (cls ? " " + cls : ""), "aria-hidden": "true", html: '<svg viewBox="0 0 24 24">' + SV[k] + "</svg>" });
+  const topEl = document.querySelector(".top");
+  const snav = h("nav", { class: "snav", "aria-label": "Mục chính" });
+  const bnav = h("nav", { class: "bnav", "aria-label": "Mục chính" });
+  topEl.querySelector(".wrap").insertBefore(snav, topEl.querySelector(".sp"));
+  document.body.append(bnav);
+  // đang làm bài thì hỏi trước khi rời trang
+  const leave = (fn) => { if (cur && cur.status === "doing") KT.confirm("Rời bài đang làm?", "Bài làm được lưu trên máy chủ, em có thể quay lại làm tiếp (đồng hồ vẫn chạy).", "Rời bài", () => { flush(); fn(); }); else fn(); };
+  const go = (k) => leave(() => renderHome(k, { cache: true }));
+  function drawNav() {
+    const due = home && home.review ? home.review.due || 0 : 0;
+    [snav, bnav].forEach((nv) => {
+      nv.innerHTML = "";
+      NAV.forEach(([k, l]) => nv.append(h("a", { href: "#" + k, class: k === view ? "on" : "", "aria-current": k === view ? "page" : null,
+        onclick: (e) => { e.preventDefault(); go(k); } }, svg(k), h("span", {}, l), k === "book" && due ? h("i", { class: "nbdg", "aria-label": due + " câu đến hạn" }, String(due > 99 ? "99+" : due)) : null)));
+    });
+  }
+  new MutationObserver(() => document.body.classList.toggle("has-nav", !!(sess && app.querySelector(":scope > .view")))).observe(app, { childList: true });
 
+  async function renderHome(v, opt) {
+    view = typeof v === "string" && NAV.some(([k]) => k === v) ? v : "home";
+    stopTimers(); cur = null; window.scrollTo(0, 0);
+    const cached = opt && opt.cache && home && Date.now() - homeAt < 60000;
+    if (!cached) {
+      setWho();
+      app.innerHTML = ""; app.append(skeleton());
+      try {
+        [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 50, p_token: sess.token }).catch(() => null), loadVids(),
+          dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {}))]);
+        clockSkew = new Date(home.server_now).getTime() - Date.now();
+        if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
+        homeAt = Date.now(); liveProm = rpc("live_list").catch(() => []);
+      } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap view empty-state" }, h("h2", {}, "Không tải được dữ liệu"), h("p", {}, "Kiểm tra kết nối mạng rồi thử lại."), h("button", { class: "btn", onclick: () => renderHome(view) }, "Thử lại"))); return; }
+    }
+    setWho(); drawNav();
+    try { history.replaceState(null, "", "#" + view); } catch (e) { }
+    app.innerHTML = "";
+    const w = h("section", { class: "wrap view v-" + view });
+    ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve })[view](w);
+    app.append(w);
+    KT.typeset(app);
+    if (!cached) setTimeout(celebrate, 500);
+  }
+  function skeleton() {
+    const b = (cls) => h("div", { class: "skel " + (cls || "") });
+    return h("div", { class: "wrap view-skel", "aria-busy": "true", "aria-label": "Đang tải" }, b("sk-hero"), h("div", { class: "sk-row" }, b(), b(), b()), b("sk-wide"));
+  }
+  const secHead = (t, sub, act) => h("div", { class: "sec-h" }, h("div", {}, h("h2", {}, t), sub ? h("p", {}, sub) : null), act || null);
+  const linkBtn = (t, k) => h("button", { class: "btn ghost sm", onclick: () => go(k) }, t);
+  const firstName = () => String(home.student.name || "").trim().split(/\s+/).slice(-1)[0];
+
+  // ngày học trong tuần này (thứ Hai → Chủ nhật), tính từ các bài đã nộp
+  function weekDays() {
+    const t = new Date(), dow = (t.getDay() + 6) % 7, mon = new Date(t.getFullYear(), t.getMonth(), t.getDate() - dow);
+    const on = new Set((home.history || []).map((r) => new Date(r.submitted_at).toDateString()));
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i); return { d, on: on.has(d.toDateString()), today: i === dow, future: i > dow }; });
+  }
+  const WEEK_GOAL = 5;
+  function weekGoal(days) {
+    const n = days.filter((x) => x.on).length, lab = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+    return h("div", { class: "wgoal" },
+      h("div", { class: "wg-h" }, h("b", {}, "Mục tiêu tuần: học " + WEEK_GOAL + " ngày"), h("span", {}, Math.min(n, WEEK_GOAL) + "/" + WEEK_GOAL + (n >= WEEK_GOAL ? ", đã đạt" : ""))),
+      h("ol", { class: "wg-days" }, days.map((x, i) => h("li", { class: (x.on ? "on" : "") + (x.today ? " is-today" : "") + (x.future ? " fut" : ""), title: x.d.toLocaleDateString("vi-VN") + (x.on ? ": có học" : "") },
+        h("span", {}, lab[i]), h("i", { "aria-hidden": "true" }, x.on ? svg("check") : null)))));
+  }
+
+  /* ----- Trang chủ: bảng hồ sơ học sinh ----- */
+  function viewHome(w) {
+    w.classList.add("dash");
+    const st = home.student, I = KT.levelInfo(home.xp), tier = KT.tierOf(I.L), rk = home.rank || {}, items = todoItems();
+    const ini = String(st.name || "?").trim().split(/\s+/).slice(-1)[0].charAt(0).toUpperCase();
+    const ds = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long" });
+    const dueN = (home.review || {}).due || 0, openN = (home.assignments || []).filter((a) => ["todo", "doing", "rem"].includes(tStatus(a))).length;
+    // cột hồ sơ bên trái
+    const link = (ic, t, n, fn) => h("button", { type: "button", class: "ds-link", onclick: fn }, svg(ic), h("span", {}, t), n ? h("b", { class: "ds-n" }, String(n > 99 ? "99+" : n)) : null);
+    const ms = home.mission, msDone = ms && ms.status === "done";
+    const side = h("aside", { class: "ds-side" },
+      h("div", { class: "ds-prof" },
+        h("div", { class: "ds-av pt" + tier, style: "--p:" + Math.round(I.pct * 100) }, h("span", {}, ini), h("i", { class: "ds-lv", title: "Cấp " + I.L }, String(I.L))),
+        h("h2", {}, st.name), h("p", { class: "ds-title" }, "Cấp " + I.L + ", " + I.title),
+        h("p", { class: "ds-meta" }, (st.class ? "Lớp " + st.class + ", " : "") + "mã " + st.code),
+        h("div", { class: "ds-mini" },
+          h("div", {}, h("b", { "data-count": home.xp }, KT.num(home.xp)), h("span", {}, "KN")),
+          h("div", {}, h("b", {}, String(home.streak || 0)), h("span", {}, "ngày liên tiếp")),
+          h("div", {}, h("b", {}, rk.all_rank ? "#" + rk.all_rank : "–"), h("span", {}, "xếp hạng")))),
+      h("nav", { class: "ds-links", "aria-label": "Lối tắt" },
+        link("tests", "Bài kiểm tra", openN, () => go("tests")),
+        link("book", "Sổ câu sai", dueN, () => go("book")),
+        link("achieve", "Bảng vinh danh", 0, () => go("achieve")),
+        link("learn", "Tự luyện", 0, () => go("learn")),
+        window.KHCalc ? link("calc", "Máy tính cầm tay", 0, () => window.KHCalc.open()) : null),
+      h("div", { class: "ds-promo" + (msDone ? " done" : "") },
+        h("span", { class: "ds-promo-ic", "aria-hidden": "true" }, msDone ? "✓" : "★"),
+        h("b", {}, msDone ? "Đã xong nhiệm vụ hôm nay" : "Nhiệm vụ hôm nay"),
+        h("p", {}, msDone ? "Hẹn em ngày mai để giữ chuỗi " + (home.streak || 0) + " ngày học." : "Khoảng 12 câu trong 15 phút, thưởng thêm 30 KN."),
+        h("button", { class: "btn sm " + (msDone ? "ghost" : "acc"), onclick: msDone ? () => viewAttempt(ms.id) : startMission }, msDone ? "Xem kết quả" : ms ? "Làm tiếp" : "Bắt đầu")));
+
+    // ô tiến độ cấp độ (vòng tròn)
+    const R = 52, Cc = 2 * Math.PI * R, pctTxt = Math.round(I.pct * 100);
+    const ring = h("div", { class: "ring", html: '<svg viewBox="0 0 128 128" aria-hidden="true"><defs><linearGradient id="rgG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b6cf2"/><stop offset="1" stop-color="#4527a0"/></linearGradient></defs>'
+      + '<circle class="rg-bg" cx="64" cy="64" r="' + R + '"/><circle class="rg-fg" cx="64" cy="64" r="' + R + '" stroke="url(#rgG)" stroke-dasharray="' + Cc.toFixed(1) + '" stroke-dashoffset="' + Cc.toFixed(1) + '" style="--off:' + (Cc * (1 - I.pct)).toFixed(1) + '"/></svg>' },
+      h("div", { class: "rg-tx" }, h("b", { "data-count": pctTxt }, String(pctTxt)), h("span", {}, "%")));
+    const lvCard = h("section", { class: "dcard d-level", role: "button", tabindex: "0", onclick: () => titleJourney(), onkeydown: (e) => { if (e.key === "Enter") titleJourney(); } },
+      h("div", { class: "dc-h" }, h("h3", {}, "Tiến độ cấp độ")),
+      h("div", { class: "lv-row" }, h("div", { class: "ring-box" }, ring),
+        h("div", { class: "lv-tx" }, h("div", { class: "lv-from" }, KT.levelBadge(I.L, "sm"), h("span", {}, "Cấp " + I.L, h("small", {}, I.title))),
+          h("p", {}, "Còn ", h("b", {}, KT.num(I.toNext) + " KN"), " để lên cấp " + (I.L + 1) + "."),
+          I.nextTitle ? h("p", { class: "lv-next" }, "Cấp " + I.nextTitleAt + ": " + I.nextTitle) : null)));
+
+    // ô bài cần làm
+    const hw = h("section", { class: "dcard d-hw" }, h("div", { class: "dc-h" }, h("h3", {}, "Bài cần làm"), h("button", { class: "dc-more", onclick: () => go("tests") }, "Xem tất cả")));
+    const hl = h("ul", { class: "hw-list" });
+    items.slice(0, 4).forEach((it) => hl.append(h("li", {}, h("button", { type: "button", class: "hw-i m-" + it.k + (it.urgent ? " urgent" : ""), onclick: it.go },
+      h("span", { class: "hw-tx" }, h("b", {}, it.t), h("small", {}, it.st + ". " + it.s)), h("span", { class: "hw-go", "aria-hidden": "true", html: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' })))));
+    if (!items.length) hl.append(h("li", { class: "hw-empty" }, h("b", {}, "Hôm nay em đã xong hết việc"), h("span", {}, "Muốn học thêm thì chọn một đề tự luyện.")));
+    hw.append(hl);
+
+    // ô hoạt động học tập (biểu đồ đường)
+    const act = h("section", { class: "dcard d-act" });
+    let span = store.get("kt_act_span", 7);
+    const drawAct = () => {
+      act.innerHTML = "";
+      const sel = h("div", { class: "seg", role: "tablist", "aria-label": "Khoảng thời gian" }, [[7, "7 ngày"], [30, "30 ngày"]].map(([n, l]) =>
+        h("button", { class: span === n ? "on" : "", role: "tab", "aria-selected": String(span === n), onclick: () => { span = n; store.set("kt_act_span", n); drawAct(); } }, l)));
+      const S = activity(span);
+      act.append(h("div", { class: "dc-h" }, h("div", {}, h("h3", {}, "Hoạt động học tập"), h("p", { class: "dc-sub" }, S.total ? KT.num(S.total) + " câu, " + S.nb + " bài trong " + span + " ngày qua" : "Chưa có bài nào trong " + span + " ngày qua")), sel),
+        S.total ? smoothChart(S.pts) : h("div", { class: "empty-state" }, h("h3", {}, "Biểu đồ đang chờ em"), h("p", {}, "Mỗi bài em nộp sẽ hiện thành một điểm trên biểu đồ."), linkBtn("Làm bài ngay", "learn")));
+    };
+    drawAct();
+
+    // cột phải: chương đang học + bài nên luyện thêm
+    const courses = h("section", { class: "dcard d-courses" }, h("div", { class: "dc-h" }, h("h3", {}, "Chương em đang học"), h("button", { class: "dc-more", onclick: () => go("learn") }, "Tự luyện")));
+    const chs = chapterProgress().slice(0, 3);
+    if (!chs.length) courses.append(h("div", { class: "empty-state" }, h("h3", {}, "Chưa có chương nào"), h("p", {}, "Làm bài theo bài hoặc theo chương để thấy tiến độ ở đây.")));
+    chs.forEach((c, i) => courses.append(h("button", { type: "button", class: "course c" + (i % 3), onclick: () => setup(KT.blueprint.chapter(c.g, c.c)) },
+      h("span", { class: "co-ic", "aria-hidden": "true" }, KT.romans[c.c] || c.c),
+      h("span", { class: "co-tx" }, h("b", {}, "Chương " + (KT.romans[c.c] || c.c) + ". " + c.name), h("small", {}, "Toán " + c.g + ", nắm vững " + KT.pct(c.m) + "%"),
+        h("span", { class: "co-bar" }, h("i", { style: "--w:" + Math.max(3, KT.pct(c.m)) + "%" })),
+        h("span", { class: "co-meta" }, h("span", {}, c.nl + " bài đã làm"), h("span", {}, KT.LEVEL3_LABEL[KT.level3(c.m)]), h("span", {}, Math.round(c.w) + " lượt câu"))),
+      h("span", { class: "co-go", "aria-hidden": "true", html: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' }))));
+    courses.append(h("button", { type: "button", class: "course-add", onclick: () => go("learn") }, "Luyện chương khác", h("span", { "aria-hidden": "true" }, "+")));
+
+    const agg = KT.aggMastery(home.mastery);
+    const weak = agg.lessons.filter((x) => x.w >= 2 && x.m < 0.8 && LESSON[x.key]).sort((a, b) => a.m - b.m).slice(0, 3);
+    const sug = h("section", { class: "dcard d-sug" }, h("div", { class: "dc-h" }, h("h3", {}, "Nên luyện thêm"), h("button", { class: "dc-more", onclick: () => go("achieve") }, "Thống kê")));
+    if (!weak.length) sug.append(h("p", { class: "dc-sub" }, "Chưa có bài nào dưới 80%. Làm thêm vài bài để hệ thống gợi ý chính xác hơn."));
+    weak.forEach((x) => sug.append(h("button", { type: "button", class: "sug-i", onclick: () => setup(improveBp([x.key])) },
+      h("span", { class: "sug-pct " + KT.level3(x.m) }, KT.pct(x.m) + "%"), h("span", { class: "sug-tx" }, h("b", {}, KT.lessonName(x.key)), h("small", {}, "Toán " + LESSON[x.key].g + ", luyện 12 câu, ưu tiên câu em từng sai")),
+      h("span", { class: "co-go", "aria-hidden": "true", html: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' }))));
+
+    // huy hiệu
+    const B = badges().sort((a, b) => (b.ok - a.ok) || (b.cur / b.need - a.cur / a.need));
+    const ach = h("section", { class: "dcard d-ach" }, h("div", { class: "dc-h" }, h("h3", {}, "Huy hiệu"), h("span", { class: "dc-sub" }, B.filter((b) => b.ok).length + "/" + B.length + " đã mở khoá"), h("button", { class: "dc-more", onclick: () => go("achieve") }, "Xem tất cả")),
+      h("div", { class: "ach-row" }, B.slice(0, 4).map((b) => h("div", { class: "achi" + (b.ok ? " ok" : ""), title: b.d },
+        h("span", { class: "bd-ic", "aria-hidden": "true" }, b.ic), h("b", {}, b.n),
+        b.ok ? h("small", {}, "Đã mở khoá") : h("span", { class: "mc-prog" }, h("i", { style: "--w:" + Math.round(Math.min(1, b.cur / b.need) * 100) + "%" }))))));
+
+    const main = h("div", { class: "ds-main" },
+      h("div", { class: "ds-hello" }, h("div", {}, h("p", { class: "dh-date" }, ds.charAt(0).toUpperCase() + ds.slice(1)),
+        h("h1", {}, greet() + " ", h("em", {}, firstName()), "!", h("span", { class: "wave", "aria-hidden": "true" }, " 👋"))),
+        h("p", { class: "ds-hsub" }, items.length ? "Em có " + items.length + " việc cần làm hôm nay." : "Em đã xong hết việc hôm nay.")),
+      h("div", { class: "ds-grid" },
+        h("div", { class: "ds-c1" }, h("div", { class: "ds-row2" }, lvCard, hw), act, ach),
+        h("div", { class: "ds-c2" }, courses, sug)));
+    w.append(h("div", { class: "ds" }, side, main));
     w.append(liveSlot(liveProm));
     if ((home.remedials || []).length) w.append(remedialBlock());
-    w.append(todayBlock());
-
-    // bài được giao
-    w.append(h("div", { class: "section-t" }, "Bài kiểm tra được giao"));
-    const now = Date.now() + clockSkew;
-    const asg = home.assignments || [];
-    if (!asg.length) w.append(h("div", { class: "panel empty" }, "Hiện chưa có bài nào được giao."));
-    else {
-      const list = h("div", { class: "cards" });
-      asg.forEach((a) => {
-        const op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
-        let state, btn = null;
-        if (a.doing) { state = h("span", { class: "pill warn" }, "Đang làm"); btn = h("button", { class: "btn acc", onclick: () => openAssignment(a) }, "Làm tiếp"); }
-        else if (now < op) state = h("span", { class: "pill" }, "Mở lúc " + KT.dt(a.opens_at));
-        else if (now > cl) state = h("span", { class: "pill" }, "Đã đóng");
-        else if (a.done >= a.max_attempts) state = h("span", { class: "pill ok" }, "Đã nộp");
-        else if (a.remedial) { state = h("span", { class: "pill warn" }, "Cần làm bài bổ sung"); btn = h("button", { class: "btn acc", onclick: () => startRemedial(a.remedial) }, "Làm bài bổ sung"); }
-        else { state = h("span", { class: "pill ok" }, "Đang mở"); btn = h("button", { class: "btn acc", onclick: () => openAssignment(a) }, a.done ? "Làm lại" : "Bắt đầu"); }
-        const res = a.last_attempt ? h("button", { class: "btn ghost sm", onclick: () => viewAttempt(a.last_attempt) }, "Xem kết quả") : null;
-        list.append(h("div", { class: "card" }, h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, h("span", { class: "tag acc" }, a.kind), state),
-          h("h3", {}, a.title),
-          h("p", { class: "meta" }, a.n_q + " câu, " + a.minutes + " phút. Hạn nộp " + KT.dt(a.closes_at) + (a.max_attempts > 1 ? ", làm tối đa " + a.max_attempts + " lần" : "")),
-          a.best != null ? h("p", {}, "Điểm: ", h("b", {}, fmt(a.best))) : null,
-          h("div", { class: "row" }, btn, res)));
-      });
-      w.append(list);
+    // việc đang diễn ra live: thêm vào đầu danh sách bài cần làm
+    (liveProm || Promise.resolve([])).then((ls) => (ls || []).filter((x) => x.status === "live").forEach((x) => {
+      const e = hl.querySelector(".hw-empty"); if (e) e.remove();
+      hl.prepend(h("li", {}, h("button", { type: "button", class: "hw-i m-live", onclick: () => renderLive(x.id) }, h("span", { class: "hw-tx" }, h("b", {}, "Đang dạy live: " + x.title), h("small", {}, "Đang diễn ra. Vào ngay để không lỡ bài.")),
+        h("span", { class: "hw-go", "aria-hidden": "true", html: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>' }))));
+    }));
+  }
+  // số câu đã làm mỗi ngày (từ các bài đã nộp)
+  function activity(n) {
+    const t = new Date(), days = [];
+    for (let i = n - 1; i >= 0; i--) { const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - i); days.push({ d, k: d.toDateString(), q: 0, b: 0 }); }
+    const by = Object.fromEntries(days.map((x) => [x.k, x]));
+    (home.history || []).forEach((r) => { const x = by[new Date(r.submitted_at).toDateString()]; if (x) { x.q += +r.n || 0; x.b++; } });
+    const WD2 = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+    return { total: days.reduce((s, x) => s + x.q, 0), nb: days.reduce((s, x) => s + x.b, 0),
+      pts: days.map((x) => ({ lab: n <= 7 ? WD2[x.d.getDay()] : x.d.getDate() + "/" + (x.d.getMonth() + 1), v: x.q,
+        tip: x.d.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" }) + "<br><b>" + x.q + " câu</b>, " + x.b + " bài" })) };
+  }
+  // biểu đồ đường cong mượt, tô chuyển màu, vẽ dần khi hiện
+  function smoothChart(pts) {
+    const W = 640, H = 240, L = 36, Rr = 14, T = 16, Bb = 30, n = pts.length;
+    const mx = Math.max(4, ...pts.map((p) => p.v)), step = Math.ceil(mx / 4), top = step * 4;
+    const x = (i) => L + (W - L - Rr) * (n <= 1 ? 0.5 : i / (n - 1)), y = (v) => T + (H - T - Bb) * (1 - v / top);
+    const P = pts.map((p, i) => [x(i), y(p.v)]);
+    let d = "M" + P[0][0].toFixed(1) + "," + P[0][1].toFixed(1);
+    for (let i = 0; i < P.length - 1; i++) {   // Catmull–Rom → Bézier, kẹp để không vượt dưới trục
+      const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, Math.min(y(0), p1[1] + (p2[1] - p0[1]) / 6)], c2 = [p2[0] - (p3[0] - p1[0]) / 6, Math.min(y(0), p2[1] - (p3[1] - p1[1]) / 6)];
+      d += "C" + c1.map((v) => v.toFixed(1)).join(",") + " " + c2.map((v) => v.toFixed(1)).join(",") + " " + p2[0].toFixed(1) + "," + p2[1].toFixed(1);
     }
-    // bài tự luyện đang làm dở
-    (home.doing || []).forEach((d) => w.append(h("div", { class: "rec", style: "margin-top:12px" },
-      h("div", { class: "tx" }, h("b", {}, "Đang làm dở: " + d.title), h("span", {}, "Hết giờ lúc " + KT.dt(d.ends_at))),
-      h("button", { class: "btn acc sm", onclick: () => viewAttempt(d.id) }, "Làm tiếp"))));
+    let g = "";
+    for (let v = 0; v <= top; v += step) g += '<line class="gl" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text class="ax" x="' + (L - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + "</text>";
+    const every = n > 10 ? Math.ceil(n / 8) : 1;
+    pts.forEach((p, i) => { if (i % every === 0 || i === n - 1) g += '<text class="ax" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + KT.esc(p.lab) + "</text>"; });
+    let hits = "";
+    pts.forEach((p, i) => { hits += '<g class="hit" data-tip="' + KT.esc(p.tip).replace(/&lt;(\/?b|br)&gt;/g, "<$1>") + '"><rect x="' + (x(i) - (W - L) / n / 2) + '" y="' + T + '" width="' + ((W - L) / n) + '" height="' + (H - T - Bb) + '" fill="transparent"/><line class="xh" x1="' + x(i) + '" x2="' + x(i) + '" y1="' + y(p.v) + '" y2="' + y(0) + '"/>'
+      + (p.v ? '<circle class="dot" cx="' + x(i) + '" cy="' + y(p.v) + '" r="4.5"/>' : "") + "</g>"; });
+    const el = h("div", { class: "schart", html: '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Số câu em làm mỗi ngày"><defs>'
+      + '<linearGradient id="scL" x1="0" x2="1"><stop offset="0" stop-color="#4527a0"/><stop offset=".55" stop-color="#8b4fe0"/><stop offset="1" stop-color="#e44fb4"/></linearGradient>'
+      + '<linearGradient id="scA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b4fe0" stop-opacity=".28"/><stop offset="1" stop-color="#8b4fe0" stop-opacity="0"/></linearGradient></defs>'
+      + g + '<path class="sc-area" d="' + d + "L" + x(n - 1) + "," + y(0) + "L" + x(0) + "," + y(0) + 'Z" fill="url(#scA)"/><path class="sc-ln" d="' + d + '" stroke="url(#scL)" pathLength="1"/>' + hits + "</svg>" });
+    return KT.tipify(el);
+  }
+  // tiến độ từng chương: gom mức nắm vững các bài theo chương, chương làm nhiều gần đây đứng trước
+  function chapterProgress() {
+    const agg = KT.aggMastery(home.mastery), M = {};
+    agg.lessons.forEach((x) => { const L = LESSON[x.key]; if (!L) return; const k = L.g + "-" + L.c; const o = (M[k] = M[k] || { g: L.g, c: L.c, name: L.cname, m: 0, w: 0, nl: 0 }); o.m += x.m * x.w; o.w += x.w; o.nl++; });
+    const recent = {}; (home.history || []).forEach((r, i) => { if (r.grade) recent[r.grade] = Math.max(recent[r.grade] || 0, 60 - i); });
+    return Object.values(M).map((o) => Object.assign(o, { m: o.w ? o.m / o.w : 0 })).sort((a, b) => ((recent[b.g] || 0) - (recent[a.g] || 0)) || b.w - a.w);
+  }
+  // các việc cần làm (dùng cho thẻ nhiệm vụ và chuông thông báo), tính từ dữ liệu thật
+  function todoItems() {
+    const now = Date.now() + clockSkew, items = [];
+    (home.remedials || []).forEach((r) => items.push({ k: "rem", pri: 0, t: "Làm bài bổ sung bắt buộc", s: remNames(r).join("; "), go: () => startRemedial(r.id), cta: r.doing ? "Làm tiếp" : "Làm ngay", st: "Bắt buộc", xp: "KN theo số câu đúng" }));
+    (home.assignments || []).forEach((a) => {
+      const op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
+      if (a.remedial || now < op || now > cl) return;
+      if (!a.doing && a.done > 0) return;
+      const urgent = cl - now < 864e5;
+      items.push({ k: "asg", pri: urgent ? 1 : 2, urgent, t: (a.doing ? "Làm tiếp bài: " : "Bài thầy giao: ") + a.title, s: a.n_q + " câu, " + a.minutes + " phút. Hạn nộp " + KT.dt(a.closes_at),
+        go: () => openAssignment(a), cta: a.doing ? "Làm tiếp" : "Làm bài", st: a.doing ? "Đang làm" : urgent ? "Sắp hết hạn" : "Chưa làm", xp: "KN theo số câu đúng" });
+    });
+    (home.doing || []).forEach((d) => items.push({ k: "doing", pri: 2, t: "Làm tiếp: " + d.title, s: "Hết giờ lúc " + KT.dt(d.ends_at), go: () => viewAttempt(d.id), cta: "Làm tiếp", st: "Đang làm", xp: "KN theo số câu đúng" }));
+    const ms = home.mission;
+    if (!ms || ms.status === "doing") items.push({ k: "mis", pri: 3, t: "Nhiệm vụ hôm nay", s: ms ? "Em đang làm dở, hết giờ lúc " + hm(ms.ends_at) + "." : "Khoảng 12 câu trong 15 phút: câu em từng sai, bài em đang yếu và 2 câu khó hơn một chút.",
+      go: startMission, cta: ms ? "Làm tiếp" : "Bắt đầu", st: ms ? "Đang làm" : "Chưa bắt đầu", xp: "+30 KN thưởng khi xong" });
+    const due = (home.review || {}).due || 0;
+    if (due) items.push({ k: "rev", pri: 4, t: "Ôn lại " + Math.min(due, 10) + " câu từng làm sai", s: due + " câu trong sổ câu sai đã đến hạn ôn.", go: startReview, cta: "Ôn ngay", st: "Đến hạn", xp: "+5 KN mỗi câu ôn đúng" });
+    return items.sort((a, b) => a.pri - b.pri);
+  }
+  const MIC = { rem: "!", asg: "✎", doing: "↻", mis: "★", rev: "⟲", live: "●" };
+  function missionGrid(items) {
+    const grid = h("div", { class: "mgrid" });
+    const card = (it, done) => h("article", { class: "mcard m-" + it.k + (done ? " done" : "") + (it.urgent ? " urgent" : "") },
+      h("div", { class: "mc-top" }, h("span", { class: "mc-ic", "aria-hidden": "true" }, MIC[it.k] || "•"), h("span", { class: "mc-st" }, done ? "Đã hoàn thành" : it.st)),
+      h("h3", {}, it.t), h("p", {}, it.s),
+      it.prog != null ? h("div", { class: "mc-prog", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round(it.prog * 100)) }, h("i", { style: "--w:" + Math.round(it.prog * 100) + "%" })) : null,
+      h("div", { class: "mc-foot" }, it.xp ? h("span", { class: "mc-xp" }, it.xp) : h("span", {}),
+        done ? h("span", { class: "mc-end" }, h("span", { class: "mc-done" }, svg("check"), "Xong"), it.go ? h("button", { class: "btn ghost sm", onclick: it.go }, "Xem kết quả") : null)
+          : h("button", { class: "btn sm" + (it.pri <= 1 ? " acc" : ""), onclick: it.go }, it.cta)));
+    items.forEach((it) => grid.append(card(it)));
+    const ms = home.mission, rv = home.review || {};
+    if (ms && ms.status === "done") grid.append(card({ k: "mis", t: "Nhiệm vụ hôm nay", s: "Hoàn thành với " + fmt(ms.score) + " điểm. Hẹn em ngày mai để giữ chuỗi " + (home.streak || 0) + " ngày học.", xp: "Đã nhận thưởng", prog: 1,
+      go: () => viewAttempt(ms.id) }, true));
+    if (!rv.due && (rv.total || rv.mastered)) grid.append(card({ k: "rev", t: "Ôn câu sai", s: "Chưa có câu nào đến hạn. Lần ôn tiếp theo: " + (rv.next ? hm(rv.next) : "–") + ".", xp: "Đã thuộc " + (rv.mastered || 0) + " câu",
+      prog: (rv.mastered || 0) / Math.max(1, (rv.total || 0) + (rv.mastered || 0)) }, true));
+    if (!grid.children.length) grid.append(h("div", { class: "empty-state" }, h("h3", {}, "Hôm nay chưa có việc nào"), h("p", {}, "Chọn một đề trong mục Học tập để bắt đầu."), linkBtn("Vào Học tập", "learn")));
+    (liveProm || Promise.resolve([])).then((ls) => (ls || []).filter((x) => x.status === "live").forEach((x) =>
+      grid.prepend(card({ k: "live", pri: -1, t: "Đang dạy live: " + x.title, s: "Lớp đã bắt đầu, vào ngay để không lỡ bài.", go: () => renderLive(x.id), cta: "Vào lớp", st: "Đang diễn ra", xp: "Có điểm danh" }))));
+    return grid;
+  }
+  // số liệu tóm tắt từ bài đã làm (không có dữ liệu thì hiện gạch ngang)
+  function learnStats() {
+    const hist = home.history || [];
+    let m = 0, wt = 0; (home.mastery || []).forEach((r) => { m += +r.m || 0; wt += +r.w || 0; });
+    const last = hist.slice(0, 10).filter((r) => r.score != null);
+    return { n: hist.length, capped: hist.length >= 60, acc: wt ? m / wt : null, avg: last.length ? last.reduce((s, r) => s + +r.score, 0) / last.length : null, nq: hist.reduce((s, r) => s + (+r.n || 0), 0) };
+  }
+  function quickStats() {
+    const S = learnStats(), rv = home.review || {};
+    const k = (n, l, sub) => h("div", { class: "kpi" }, h("div", { class: "n" }, n), h("div", { class: "l" }, l), sub ? h("div", { class: "kpi-sub" }, sub) : null);
+    return h("div", { class: "kpis" },
+      k(KT.num(S.n), "bài đã nộp", S.capped ? "tính 60 bài gần nhất" : null),
+      k(S.nq ? KT.num(S.nq) : "–", "câu đã làm", S.capped ? "trong 60 bài gần nhất" : null),
+      k(S.acc == null ? "–" : KT.pct(S.acc) + "%", "tỉ lệ đúng", "tính trên mọi câu đã làm"),
+      k(S.avg == null ? "–" : fmt(S.avg), "điểm trung bình", "10 bài gần nhất"),
+      k(KT.num(rv.mastered || 0), "câu sai đã thuộc", rv.due ? rv.due + " câu đến hạn ôn" : null));
+  }
 
-    // bảng vinh danh
-    if (lboard) w.append(fameBlock());
+  /* ----- Bài kiểm tra ----- */
+  function tStatus(a) {
+    const now = Date.now() + clockSkew, op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
+    if (a.doing) return "doing";
+    if (now < op) return "soon";
+    if (now > cl) return a.done ? "closed" : "late";
+    if (a.remedial) return "rem";
+    if (a.done >= a.max_attempts || a.done > 0) return "done";
+    return "todo";
+  }
+  const TST = { todo: ["Chưa làm", "info"], doing: ["Đang làm", "warn"], done: ["Đã hoàn thành", "ok"], late: ["Quá hạn", "bad"], closed: ["Đã đóng", ""], soon: ["Sắp mở", ""], rem: ["Cần làm bài bổ sung", "warn"] };
+  const leftTxt = (ms) => { const hh = Math.floor(ms / 36e5); return hh >= 48 ? "còn " + Math.floor(hh / 24) + " ngày" : hh >= 1 ? "còn " + hh + " giờ" : "còn " + Math.max(1, Math.floor(ms / 6e4)) + " phút"; };
+  function testCard(a) {
+    const s = tStatus(a), now = Date.now() + clockSkew, op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
+    let btn = null;
+    if (s === "doing") btn = h("button", { class: "btn acc", onclick: () => openAssignment(a) }, "Làm tiếp");
+    else if (s === "rem") btn = h("button", { class: "btn acc", onclick: () => startRemedial(a.remedial) }, "Làm bài bổ sung");
+    else if (s === "todo") btn = h("button", { class: "btn acc", onclick: () => openAssignment(a) }, "Bắt đầu");
+    else if (s === "done" && a.done < a.max_attempts && now < cl) btn = h("button", { class: "btn", onclick: () => openAssignment(a) }, "Làm lại");
+    const res = a.last_attempt ? h("button", { class: "btn ghost", onclick: () => viewAttempt(a.last_attempt) }, "Xem kết quả") : null;
+    const tf = now < op ? 0 : Math.min(1, (now - op) / Math.max(1, cl - op));
+    const row = (k, v) => h("div", {}, h("dt", {}, k), h("dd", {}, v));
+    return h("article", { class: "tcard st-" + s },
+      h("div", { class: "tc-top" }, h("span", { class: "tag" }, a.kind), h("span", { class: "pill " + TST[s][1] }, TST[s][0])),
+      h("h3", {}, a.title),
+      h("dl", { class: "tc-meta" }, row("Số câu", String(a.n_q)), row("Thời gian", a.minutes + " phút"), row("Hạn nộp", KT.dt(a.closes_at)), row("Lượt làm", a.done + "/" + a.max_attempts)),
+      ["todo", "doing", "rem", "done"].includes(s) && now < cl ? h("div", { class: "tc-time" }, h("div", { class: "tc-bar", title: "Thời gian mở bài đã trôi qua" }, h("i", { style: "--w:" + Math.round(tf * 100) + "%" })), h("span", {}, "Hạn nộp " + leftTxt(cl - now)))
+        : s === "soon" ? h("div", { class: "tc-time" }, h("span", {}, "Mở lúc " + KT.dt(a.opens_at))) : null,
+      a.best != null ? h("p", { class: "tc-score" }, "Điểm cao nhất ", h("b", {}, fmt(a.best))) : null,
+      h("div", { class: "tc-act" }, btn, res));
+  }
+  const testGrid = (list) => h("div", { class: "tgrid" }, list.map(testCard));
+  let tFilter = "all", tQuery = "";
+  function viewTests(w) {
+    const all = home.assignments || [];
+    w.append(secHead("Bài kiểm tra được giao", "Bài thầy cô giao cho lớp " + (home.student.class || "của em") + ". Bài đóng sau 14 ngày sẽ không hiện ở đây nữa."));
+    const F = [["all", "Tất cả"], ["todo", "Chưa làm"], ["doing", "Đang làm"], ["done", "Đã hoàn thành"], ["late", "Quá hạn"], ["closed", "Đã đóng"], ["soon", "Sắp mở"]];
+    const cnt = (k) => (k === "all" ? all.length : all.filter((a) => tStatus(a) === k || (k === "doing" && tStatus(a) === "rem")).length);
+    const grid = h("div", {});
+    const chips = h("div", { class: "chips", role: "tablist", "aria-label": "Lọc theo trạng thái" });
+    const q = h("input", { type: "search", class: "search", placeholder: "Tìm theo tên bài", value: tQuery, "aria-label": "Tìm bài kiểm tra" });
+    const draw = () => {
+      chips.innerHTML = "";
+      F.forEach(([k, l]) => { const n = cnt(k); if (k !== "all" && !n) return; chips.append(h("button", { class: tFilter === k ? "on" : "", role: "tab", "aria-selected": String(tFilter === k), onclick: () => { tFilter = k; draw(); } }, l, h("b", {}, String(n)))); });
+      const s = tQuery.trim().toLowerCase();
+      const list = all.filter((a) => (tFilter === "all" || tStatus(a) === tFilter || (tFilter === "doing" && tStatus(a) === "rem")) && (!s || a.title.toLowerCase().includes(s)));
+      grid.innerHTML = "";
+      grid.append(list.length ? testGrid(list) : h("div", { class: "empty-state" }, h("h3", {}, all.length ? "Không có bài nào khớp" : "Hiện chưa có bài nào được giao"), h("p", {}, all.length ? "Thử chọn trạng thái khác hoặc xoá từ khoá tìm kiếm." : "Khi thầy cô giao bài, bài sẽ hiện ở đây. Trong lúc chờ, em có thể tự luyện ở mục Học tập."),
+        all.length ? null : linkBtn("Vào Học tập", "learn")));
+      if (KT.ui) KT.ui.reveal(grid);
+    };
+    q.addEventListener("input", () => { tQuery = q.value; draw(); });
+    w.append(h("div", { class: "toolbar" }, chips, q), grid);
+    draw();
+    const doing = home.doing || [];
+    if (doing.length) {
+      w.append(secHead("Bài tự luyện đang làm dở"));
+      w.append(h("div", { class: "tgrid" }, doing.map((d) => h("article", { class: "tcard st-doing" }, h("div", { class: "tc-top" }, h("span", { class: "tag" }, "Tự luyện"), h("span", { class: "pill warn" }, "Đang làm")),
+        h("h3", {}, d.title), h("p", { class: "tc-score" }, "Hết giờ lúc " + KT.dt(d.ends_at)), h("div", { class: "tc-act" }, h("button", { class: "btn acc", onclick: () => viewAttempt(d.id) }, "Làm tiếp"))))));
+    }
+  }
 
-    // tự luyện
-    w.append(h("div", { class: "section-t" }, "Tự luyện"));
+  /* ----- Học tập ----- */
+  function viewLearn(w) {
+    w.append(secHead("Tự luyện", "Chọn khối lớp rồi chọn dạng đề. Mỗi lần làm em nhận một đề khác nhau."));
     w.append(h("div", { class: "grades", role: "tablist" }, [6, 7, 8, 9, 10, 11, 12].map((x) => h("button", {
       class: "grade" + (x === grade ? " on" : ""), disabled: !CUR[x], role: "tab", "aria-selected": String(x === grade),
-      onclick: () => { grade = x; store.set("kt_grade", x); renderHome(); } }, "Lớp " + x, !CUR[x] ? h("small", {}, "sắp có") : null))));
+      onclick: () => { grade = x; store.set("kt_grade", x); renderHome("learn", { cache: true }); } }, "Lớp " + x, !CUR[x] ? h("small", {}, "sắp có") : null))));
     w.append(practiceCards(grade));
+  }
 
-    // hồ sơ
-    w.append(h("div", { class: "section-t" }, "Hồ sơ năng lực"));
+  /* ----- Sổ câu sai ----- */
+  let bFilter = "all", bLv = "", bTopic = "", bQuery = "";
+  function viewBook(w) {
+    const rv = home.review || {};
+    w.append(secHead("Sổ câu sai", "Câu nào em làm sai sẽ tự vào sổ. Hệ thống hẹn em ôn lại sau 1, 3, 7 rồi 21 ngày; đúng đủ 4 lần là đã thuộc."));
+    const body = h("div", {}, h("div", { class: "sk-row" }, h("div", { class: "skel" }), h("div", { class: "skel" }), h("div", { class: "skel" })));
+    w.append(body);
+    rpc("review_list").then(async (d) => {
+      body.innerHTML = "";
+      const now = new Date(d.server_now).getTime(), items = d.items || [];
+      const isDue = (x) => !x.done && new Date(x.due_at).getTime() <= now + 6 * 3600e3;
+      const due = items.filter(isDue).length, mastered = items.filter((x) => x.done).length, inProg = items.length - due - mastered;
+      const tile = (n, l, cls) => h("div", { class: "kpi " + (cls || "") }, h("div", { class: "n" }, KT.num(n)), h("div", { class: "l" }, l));
+      body.append(h("div", { class: "book-top" },
+        h("div", { class: "kpis" }, tile(items.length, "câu trong sổ"), tile(due, "đến hạn ôn", due ? "k-due" : ""), tile(inProg, "đang ôn"), tile(mastered, "đã thuộc", "k-ok")),
+        h("div", { class: "book-cta" + (due ? " hot" : "") },
+          h("div", {}, h("b", {}, due ? "Có " + due + " câu đến hạn ôn" : items.length ? "Chưa có câu nào đến hạn" : "Sổ đang trống"),
+            h("span", {}, due ? "Mỗi lượt ôn 10 câu, câu “tưởng đúng mà sai” được ôn trước." : rv.next ? "Lần ôn tiếp theo: " + hm(rv.next) + "." : "Làm bài kiểm tra, câu sai sẽ tự vào đây.")),
+          due ? h("button", { class: "btn acc lg", onclick: startReview }, "Ôn tập ngay") : null)));
+      if (!items.length) { KT.ui && KT.ui.reveal(body); return; }
+      // câu sai theo bài
+      const byL = {}; items.filter((x) => !x.done).forEach((x) => { const k = x.g + "-" + x.l; byL[k] = (byL[k] || 0) + 1; });
+      const top = Object.entries(byL).sort((a, b) => b[1] - a[1]).slice(0, 8), mx = top.length ? top[0][1] : 1;
+      const byLv = {}; items.filter((x) => !x.done).forEach((x) => (byLv[x.lv] = (byLv[x.lv] || 0) + 1));
+      body.append(h("div", { class: "book-charts" },
+        h("div", { class: "panel" }, h("h3", {}, "Câu chưa thuộc theo bài"), h("p", { class: "sub" }, "Bài nhiều câu sai nhất ở trên cùng: nên ôn bài đó trước."),
+          top.length ? KT.tipify(h("div", { class: "cbars" }, top.map(([k, n]) => h("div", { class: "cb", "data-tip": KT.esc(KT.lessonName(k, true)) + ": <b>" + n + " câu</b>" },
+            h("span", { class: "cb-l" }, KT.lessonName(k, true)), h("span", { class: "cb-t" }, h("i", { style: "--w:" + Math.round(n / mx * 100) + "%" })), h("b", {}, String(n)))))) : h("p", { class: "empty" }, "Em đã thuộc hết các câu trong sổ.")),
+        h("div", { class: "panel" }, h("h3", {}, "Theo mức độ"), h("p", { class: "sub" }, "Số câu chưa thuộc ở từng mức."),
+          h("div", { class: "lvchips" }, ["NB", "TH", "VD", "VDC"].map((k) => h("div", { class: "lvc lv-" + k }, h("b", {}, String(byLv[k] || 0)), h("span", {}, LV[k] || k)))))));
+      // bộ lọc + tìm kiếm + danh sách
+      const strip = (s) => String(s || "").replace(/<[^>]+>/g, " ").replace(/\$[^$]*\$/g, " ").toLowerCase();
+      const topics = [...new Set(items.map((x) => x.g + "-" + x.l))].sort((a, b) => (LESSON[a] && LESSON[b] ? LESSON[a].g - LESSON[b].g || LESSON[a].l - LESSON[b].l : 0));
+      const chips = h("div", { class: "chips", role: "tablist", "aria-label": "Lọc theo trạng thái" });
+      const lvSel = h("select", { "aria-label": "Lọc theo mức độ" }, h("option", { value: "" }, "Mọi mức độ"), ["NB", "TH", "VD", "VDC"].map((k) => h("option", { value: k, selected: bLv === k }, LV[k] || k)));
+      const tpSel = h("select", { "aria-label": "Lọc theo bài" }, h("option", { value: "" }, "Mọi bài"), topics.map((k) => h("option", { value: k, selected: bTopic === k }, KT.lessonName(k, true))));
+      const q = h("input", { type: "search", class: "search", placeholder: "Tìm trong nội dung câu", value: bQuery, "aria-label": "Tìm câu sai" });
+      const list = h("div", { class: "booklist" });
+      const steps = (b, done) => h("span", { class: "boxes", title: done ? "Đã thuộc" : "Đã ôn đúng " + b + "/4 lần" }, [0, 1, 2, 3].map((i) => h("i", { class: done || i < b ? "on" : "" })));
+      const draw = () => {
+        chips.innerHTML = "";
+        [["all", "Tất cả", items.length], ["due", "Đến hạn", due], ["prog", "Đang ôn", inProg], ["done", "Đã thuộc", mastered]].forEach(([k, l, n]) =>
+          chips.append(h("button", { class: bFilter === k ? "on" : "", role: "tab", "aria-selected": String(bFilter === k), onclick: () => { bFilter = k; draw(); } }, l, h("b", {}, String(n)))));
+        const s = bQuery.trim().toLowerCase();
+        const rows = items.filter((x) => (bFilter === "all" || (bFilter === "due" ? isDue(x) : bFilter === "done" ? x.done : !x.done && !isDue(x)))
+          && (!bLv || x.lv === bLv) && (!bTopic || x.g + "-" + x.l === bTopic) && (!s || strip(x.q).includes(s) || KT.lessonName(x.g + "-" + x.l).toLowerCase().includes(s)));
+        list.innerHTML = "";
+        if (!rows.length) list.append(h("div", { class: "empty-state" }, h("h3", {}, "Không có câu nào khớp"), h("p", {}, "Thử bỏ bớt bộ lọc hoặc đổi từ khoá.")));
+        rows.slice(0, 120).forEach((x) => {
+          const when = x.done ? h("span", { class: "pill ok" }, "Đã thuộc") : isDue(x) ? h("span", { class: "pill warn" }, "Đến hạn ôn") : h("span", { class: "pill" }, "Ôn lúc " + hm(x.due_at));
+          list.append(h("div", { class: "bk-item" + (x.done ? " done" : "") },
+            h("div", { class: "bk-meta" }, h("b", {}, KT.lessonName(x.g + "-" + x.l, true)), h("span", { class: "lvl" }, LV[x.lv] || x.lv), h("span", {}, TYPE_SHORT[x.t]),
+              x.cw ? h("span", { class: "conftag cw" }, "Tưởng đúng mà sai") : null, x.wrong_n > 1 ? h("span", { class: "pill bad" }, "Sai " + x.wrong_n + " lần") : null,
+              h("span", { class: "sp" }), when, steps(x.box, x.done)),
+            h("div", { class: "qmini", html: x.q })));
+        });
+        if (rows.length > 120) list.append(h("p", { class: "sub" }, "Đang hiện 120 trên " + rows.length + " câu. Dùng bộ lọc để thu hẹp."));
+        KT.typeset(list, figCache);
+      };
+      lvSel.addEventListener("change", () => { bLv = lvSel.value; draw(); });
+      tpSel.addEventListener("change", () => { bTopic = tpSel.value; draw(); });
+      q.addEventListener("input", () => { bQuery = q.value; draw(); });
+      body.append(secHead("Danh sách câu sai"), h("div", { class: "toolbar" }, chips, h("div", { class: "tb-r" }, lvSel, tpSel, q)), list);
+      const need = [...new Set(items.flatMap((x) => [...(x.q || "").matchAll(/data-fig="([0-9a-f]+)"/g)].map((m) => m[1])))].filter((k) => !figCache[k]);
+      if (need.length) { try { Object.assign(figCache, await api.rpc("get_figs", { p_ids: need.slice(0, 200) })); } catch (e) { } }
+      draw();
+      if (KT.ui) KT.ui.reveal(body);
+    }).catch((e) => { body.innerHTML = ""; body.append(h("div", { class: "empty-state" }, h("h3", {}, "Không tải được sổ câu sai"), h("p", {}, e.message || ""), h("button", { class: "btn", onclick: () => renderHome("book") }, "Thử lại"))); });
+  }
+  const renderBook = () => renderHome("book");
+
+  /* ----- Thành tích: danh hiệu, huy hiệu, chuỗi ngày, vinh danh, thống kê ----- */
+  const GEO = /hình|tam giác|tứ giác|đa giác|vectơ|véc|đường tròn|góc|song song|vuông góc|khối|mặt cầu|mặt phẳng|đường thẳng|tọa độ|toạ độ|lăng trụ|chóp|trụ|nón|cầu|đối xứng|định lí thalès|pythagore|đồng dạng/i;
+  function maxStreak() {
+    const ds = [...new Set((home.history || []).map((r) => { const d = new Date(r.submitted_at); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5; }))].sort((a, b) => a - b);
+    let best = ds.length ? 1 : 0, run = 1;
+    for (let i = 1; i < ds.length; i++) { run = ds[i] - ds[i - 1] === 1 ? run + 1 : 1; best = Math.max(best, run); }
+    return Math.max(best, home.streak || 0);
+  }
+  function badges() {
+    const hist = home.history || [], agg = KT.aggMastery(home.mastery);
+    const strong = agg.lessons.filter((x) => x.w >= 10 && x.m >= 0.8 && LESSON[x.key]);
+    const isGeo = (k) => GEO.test(LESSON[k].cname + " " + LESSON[k].name);
+    const nGeo = strong.filter((x) => isGeo(x.key)).length, nAlg = strong.length - nGeo;
+    const vd = ["VD", "VDC"].reduce((o, k) => { const v = agg.levels[k]; if (v) { o.m += v.m; o.w += v.w; } return o; }, { m: 0, w: 0 });
+    const vdOk = vd.w >= 20 && vd.m / vd.w >= 0.7;
+    return [
+      { id: "first", ic: "⚑", n: "Bước chân đầu tiên", d: "Nộp bài kiểm tra đầu tiên.", cur: Math.min(hist.length, 1), need: 1 },
+      { id: "chamchi", ic: "🐜", n: "Kiến chăm chỉ", d: "Học 7 ngày liên tiếp.", cur: maxStreak(), need: 7, unit: "ngày" },
+      { id: "benbi", ic: "⛰", n: "Học tập bền bỉ", d: "Nộp 30 bài.", cur: hist.length, need: 30, unit: "bài" },
+      { id: "daiso", ic: "𝑥", n: "Chiến binh Đại số", d: "Vững (từ 80%) 3 bài Đại số, Giải tích hoặc Số học, mỗi bài làm từ 10 câu.", cur: nAlg, need: 3, unit: "bài" },
+      { id: "hinhhoc", ic: "△", n: "Bậc thầy Hình học", d: "Vững (từ 80%) 3 bài Hình học, mỗi bài làm từ 10 câu.", cur: nGeo, need: 3, unit: "bài" },
+      { id: "thuthach", ic: "⚡", n: "Nhà chinh phục thử thách", d: "Đúng từ 70% câu Vận dụng và Vận dụng cao, tính trên ít nhất 20 câu.", cur: vdOk ? 20 : Math.min(19, Math.round(vd.w)), need: 20, unit: "câu", note: vd.w >= 20 && !vdOk ? "Đã đủ 20 câu, cần đúng từ 70% (hiện " + KT.pct(vd.m / vd.w) + "%)" : null },
+      { id: "tuyetdoi", ic: "✦", n: "Điểm tuyệt đối", d: "Đạt 10 điểm ở một bài.", cur: hist.some((r) => +r.score === 10) ? 1 : 0, need: 1 },
+      { id: "trinho", ic: "◆", n: "Trí nhớ thép", d: "Thuộc 20 câu trong sổ câu sai.", cur: (home.review || {}).mastered || 0, need: 20, unit: "câu" },
+    ].map((b) => Object.assign(b, { ok: b.cur >= b.need }));
+  }
+  function badgeGrid() {
+    const B = badges();
+    return h("div", { class: "bgrid" }, B.map((b) => h("article", { class: "badge" + (b.ok ? " ok" : ""), title: b.d },
+      h("span", { class: "bd-ic", "aria-hidden": "true" }, b.ic),
+      h("div", { class: "bd-tx" }, h("b", {}, b.n), h("span", {}, b.d)),
+      b.ok ? h("span", { class: "bd-st" }, svg("check"), "Đã mở khoá")
+        : h("div", { class: "bd-prog" }, h("div", { class: "mc-prog" }, h("i", { style: "--w:" + Math.round(Math.min(1, b.cur / b.need) * 100) + "%" })), h("span", {}, b.note || (Math.min(b.cur, b.need) + "/" + b.need + (b.unit ? " " + b.unit : "")))))));
+  }
+  function streakPanel() {
+    const s = home.streak || 0, MS = [3, 7, 14, 30, 60, 100, 200, 365], nx = MS.find((m) => m > s);
+    return h("div", { class: "panel streakp" },
+      h("div", { class: "sp-top" }, h("div", { class: "sp-fire", "aria-hidden": "true" }, "🔥"), h("div", {}, h("b", { "data-count": s }, KT.num(s)), h("span", {}, "ngày học liên tiếp"))),
+      weekGoal(weekDays()),
+      h("p", { class: "sub" }, s ? (nx ? "Còn " + (nx - s) + " ngày nữa để đạt mốc " + nx + " ngày. Mỗi ngày chỉ cần nộp một bài là giữ được chuỗi." : "Em đã vượt mọi mốc chuỗi ngày. Quá xuất sắc!") : "Nộp một bài hôm nay để bắt đầu chuỗi ngày học."));
+  }
+  function journeyList() {
+    const I = KT.levelInfo(home.xp), ti = KT.tierOf(I.L), list = h("ol", { class: "tj" });
+    KT.TITLES.forEach(([lv, name], i) => {
+      const next = KT.TITLES[i + 1], need = KT.lvXp(lv), got = i < ti ? "done" : i === ti ? "now" : "lock";
+      list.append(h("li", { class: "tj-" + got }, KT.levelBadge(lv, "md"),
+        h("div", { class: "tj-tx" }, h("b", {}, name), h("span", {}, (next ? "Cấp " + lv + "–" + (next[0] - 1) : "Cấp " + lv + " trở lên") + ", từ " + KT.num(need) + " KN")),
+        h("span", { class: "tj-st" }, got === "done" ? "✓ Đã đạt" : got === "now" ? "Em đang ở đây" : "Còn " + KT.num(need - home.xp) + " KN")));
+    });
+    return list;
+  }
+  function viewAchieve(w) {
+    w.append(secHead("Thành tích", "Kinh nghiệm (KN) cộng dồn từ mọi bài em làm và không bao giờ bị trừ."));
+    const jp = h("div", { class: "panel jpanel" }, h("h3", {}, "Hành trình danh hiệu"), journeyList());
+    w.append(h("div", { class: "ach-top" }, h("div", { class: "ach-l" }, levelCard(), streakPanel()), jp));
+    setTimeout(() => { const c = jp.querySelector(".tj-now"); if (c) jp.querySelector(".tj").scrollTop = c.offsetTop - 120; }, 80);
+    const B = badges();
+    w.append(secHead("Huy hiệu", "Đã mở khoá " + B.filter((b) => b.ok).length + "/" + B.length + ". Điều kiện tính từ bài em đã làm."), badgeGrid());
+    if (lboard) w.append(fameBlock());
+    // thống kê học tập
+    w.append(secHead("Thống kê học tập", "Chỉ tính từ bài em đã nộp."));
+    w.append(quickStats());
+    const hist = (home.history || []).filter((r) => r.score != null).slice(0, 20).reverse();
+    const pts = hist.map((r) => ({ x: new Date(r.submitted_at).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }), y: +r.score, tip: KT.esc(r.title) + "<br><b>" + fmt(r.score) + " điểm</b>, " + KT.dt(r.submitted_at) }));
     const agg = KT.aggMastery(home.mastery, grade);
+    const weakRows = agg.lessons.filter((x) => LESSON[x.key]).sort((a, b) => a.m - b.m).slice(0, 8).map((x) => ({ label: KT.lessonName(x.key), m: x.m, sub: Math.round(x.w) + " lượt câu" }));
+    w.append(h("div", { class: "stat-grid" },
+      h("div", { class: "panel" }, h("h3", {}, "Điểm các bài gần đây"), h("p", { class: "sub" }, "20 bài gần nhất, thang 10. Rê chuột vào từng điểm để xem bài."),
+        pts.length ? KT.lineChart(pts, { label: "Điểm các bài gần đây" }) : h("div", { class: "empty-state" }, h("h3", {}, "Chưa có bài nào"), h("p", {}, "Nộp bài đầu tiên để thấy biểu đồ tiến bộ."), linkBtn("Bắt đầu học", "learn"))),
+      h("div", { class: "panel" }, h("h3", {}, "Mức nắm vững theo bài, Toán " + grade), h("p", { class: "sub" }, "Bài yếu nhất ở trên. Đổi khối ở mục Học tập."),
+        weakRows.length ? KT.hbars(weakRows) : h("div", { class: "empty-state" }, h("h3", {}, "Chưa có dữ liệu Toán " + grade), h("p", {}, "Làm vài bài để hệ thống biết em mạnh, yếu phần nào."))),
+      KT.statusLegend()));
     const pr = h("div", { class: "profile" });
     const left = h("div", {});
     left.append(KT.radarPanel("Đa giác năng lực Toán " + grade, "Tổng hợp tất cả bài em đã làm (cả bài giao và tự luyện).", KT.contentAxes(agg.lessons)));
@@ -263,13 +740,34 @@
     if (!home.history.length) hp.append(h("div", { class: "empty" }, "Chưa có bài nào."));
     else {
       const ul = h("ul", { class: "hist" });
-      home.history.forEach((r) => ul.append(h("li", { class: "click", onclick: () => viewAttempt(r.id), tabindex: 0 }, h("span", { class: "sc" }, fmt(r.score)),
+      home.history.forEach((r) => ul.append(h("li", { class: "click", onclick: () => viewAttempt(r.id), tabindex: 0, onkeydown: (e) => { if (e.key === "Enter") viewAttempt(r.id); } }, h("span", { class: "sc" }, fmt(r.score)),
         h("div", { class: "ti" }, h("b", {}, r.title), h("span", {}, r.kind + (r.assigned ? " (bài giao)" : "") + ", nộp lúc " + KT.dt(r.submitted_at))))));
       hp.append(ul);
     }
     pr.append(hp); w.append(pr);
-    app.append(w);
-    KT.typeset(app);
+  }
+
+  // chúc mừng: lên cấp, xong nhiệm vụ hôm nay, mở khoá huy hiệu mới (mỗi việc chỉ một lần, nhớ trên máy)
+  function celebrate() {
+    if (!home || !sess) return;
+    const key = (k) => "kt_" + k + "_" + sess.code;
+    const I = KT.levelInfo(home.xp), prevL = store.get(key("lvl"), null);
+    store.set(key("lvl"), I.L);
+    if (prevL != null && I.L > prevL) { levelUp(prevL, I); KT.ui && KT.ui.confetti(); return; }
+    const ms = home.mission, today = new Date().toDateString();
+    if (ms && ms.status === "done" && store.get(key("msok"), null) !== today) {
+      store.set(key("msok"), today);
+      KT.ui && KT.ui.confetti(); KT.toast("Em đã hoàn thành nhiệm vụ hôm nay và nhận thêm 30 KN thưởng. Giỏi lắm!", "ok");
+    }
+    const got = badges().filter((b) => b.ok).map((b) => b.id), seen = store.get(key("badges"), null);
+    store.set(key("badges"), got);
+    if (seen) {
+      const fresh = got.filter((id) => !seen.includes(id));
+      if (fresh.length) {
+        const b = badges().find((x) => x.id === fresh[0]);
+        KT.ui && KT.ui.confetti(); KT.toast("Mở khoá huy hiệu mới: " + b.n + (fresh.length > 1 ? " và " + (fresh.length - 1) + " huy hiệu khác" : ""), "ok");
+      }
+    }
   }
 
   /* ---------------- thăng cấp + vinh danh ---------------- */
@@ -369,26 +867,34 @@
   }
   function fameBlock() {
     const box = h("div", { class: "fame" });
+    const myCls = home.student.class;
     const draw = () => {
       box.innerHTML = "";
       const rk = home.rank || {};
-      const tabs = h("div", { class: "filters", role: "tablist" },
-        [["all", "🏆 Tổng tích luỹ"], ["week", "⚡ Đua top tuần"]].map(([k, l]) => h("button", { class: fameTab === k ? "on" : "", role: "tab", "aria-selected": String(fameTab === k), onclick: () => { fameTab = k; draw(); } }, l)));
-      const rows = fameTab === "week" ? lboard.week : lboard.all;
-      const myRank = fameTab === "week" ? rk.week_rank : rk.all_rank;
+      const T = [["all", "🏆 Tổng tích luỹ"], ["week", "⚡ Đua top tuần"]].concat(myCls ? [["class", "Lớp " + myCls]] : []);
+      const tabs = h("div", { class: "filters", role: "tablist" }, T.map(([k, l]) => h("button", { class: fameTab === k ? "on" : "", role: "tab", "aria-selected": String(fameTab === k), onclick: () => { fameTab = k; draw(); } }, l)));
+      const key = fameTab === "week" ? "w" : "xp";
+      const rows = (fameTab === "week" ? lboard.week : fameTab === "class" ? (lboard.all || []).filter((r) => r.class === myCls) : lboard.all) || [];
+      const myRank = fameTab === "week" ? rk.week_rank : fameTab === "all" ? rk.all_rank : null;
       box.append(h("div", { class: "fame-head" }, tabs,
-        h("span", { class: "fame-me" }, rk.hidden ? "Em đang được ẩn khỏi bảng vinh danh." : myRank ? "Em đang xếp hạng " + myRank + (fameTab === "week" ? " tuần này, " + KT.num(rk.week_xp) + " KN" : "") : "Làm bài để có tên trên bảng.")),
-        KT.rankList(rows, fameTab === "week" ? "w" : "xp", { empty: fameTab === "week" ? "Tuần mới vừa bắt đầu. Ai làm bài đầu tiên sẽ đứng đầu bảng!" : undefined }),
-        h("p", { class: "fame-note" }, fameTab === "week" ? "Bảng đua top tuần tính lại từ thứ Hai. KN và danh hiệu của em vẫn được giữ nguyên." : "Xếp theo tổng KN tích luỹ từ trước đến nay — không bao giờ reset."));
+        h("span", { class: "fame-me" }, rk.hidden ? "Em đang được ẩn khỏi bảng vinh danh." : myRank ? "Em đang xếp hạng " + myRank + (fameTab === "week" ? " tuần này, " + KT.num(rk.week_xp) + " KN" : "") : fameTab === "class" ? "Bạn trong lớp em có mặt trong top 50." : "Làm bài để có tên trên bảng.")));
+      if (rows.length >= 3) {
+        const pod = h("ol", { class: "podium", "aria-label": "Ba bạn dẫn đầu" });
+        [1, 0, 2].forEach((i) => { const r = rows[i], L = KT.lvOf(r.xp);
+          pod.append(h("li", { class: "pd p" + (i + 1) }, h("span", { class: "pd-rk" }, String(i + 1)), KT.levelBadge(L, "md"), h("b", {}, r.name), h("small", {}, KT.titleOf(L) + (r.class ? ", lớp " + r.class : "")),
+            h("span", { class: "pd-xp" }, KT.num(r[key]), " KN"), h("i", { class: "pd-step", "aria-hidden": "true" }))); });
+        box.append(pod, KT.rankList(rows.slice(3, 10), key, { start: 3 }));
+      } else box.append(KT.rankList(rows.slice(0, 10), key, { empty: fameTab === "week" ? "Tuần mới vừa bắt đầu. Ai làm bài đầu tiên sẽ đứng đầu bảng!" : undefined }));
+      box.append(h("p", { class: "fame-note" }, fameTab === "week" ? "Bảng đua top tuần tính lại từ thứ Hai. KN và danh hiệu của em vẫn được giữ nguyên." : "Xếp theo tổng KN tích luỹ từ trước đến nay, không bao giờ reset. Chỉ hiện tên viết tắt."));
     };
     draw();
-    return h("div", {}, h("div", { class: "section-t" }, "Bảng vinh danh"), box);
+    return h("div", {}, secHead("Bảng vinh danh", "Các bạn học cùng thầy cô của em."), box);
   }
   function xpBlock(p, fresh) {
     const gained = +p.xp || 0, total = +p.student_xp || 0;
     const I = KT.levelInfo(total), before = KT.lvOf(total - gained);
     const el = h("div", { class: "xpgain" },
-      h("div", { class: "xg-n" }, "+" + KT.num(gained), h("small", {}, " kinh nghiệm")),
+      h("div", { class: "xg-n" }, "+", h("span", { "data-count": gained }, KT.num(gained)), h("small", {}, " kinh nghiệm")),
       h("div", { class: "xg-lv" }, KT.levelBadge(I.L, "sm"), h("div", {},
         h("b", {}, "Cấp " + I.L + " · " + I.title),
         h("div", { class: "xpbar" }, h("i", { style: "width:" + Math.round(I.pct * 100) + "%" })),
@@ -410,38 +916,6 @@
 
   /* ---------------- nhiệm vụ hôm nay + sổ câu sai ---------------- */
   const hm = (d) => new Date(d).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
-  function todayBlock() {
-    const ms = home.mission, rv = home.review || {}, streak = home.streak || 0;
-    let mText, mBtn;
-    if (!ms) {
-      mText = "Khoảng 12 câu trong 15 phút: ôn lại câu em từng sai, luyện bài em đang yếu và 2 câu khó hơn một chút.";
-      mBtn = h("button", { class: "btn acc", onclick: startMission }, "Làm nhiệm vụ");
-    } else if (ms.status === "doing") {
-      mText = "Em đang làm dở nhiệm vụ hôm nay. Đồng hồ vẫn chạy, hết giờ lúc " + hm(ms.ends_at) + ".";
-      mBtn = h("button", { class: "btn acc", onclick: startMission }, "Làm tiếp");
-    } else {
-      mText = "Hoàn thành rồi, " + fmt(ms.score) + " điểm. Hẹn em ngày mai để giữ chuỗi ngày học.";
-      mBtn = h("button", { class: "btn ghost", onclick: () => viewAttempt(ms.id) }, "Xem kết quả");
-    }
-    const mission = h("div", { class: "mission" + (ms && ms.status === "done" ? " done" : "") },
-      h("div", { class: "m-head" },
-        h("div", {}, h("h2", {}, "Nhiệm vụ hôm nay"), h("p", {}, mText)),
-        h("div", { class: "streak", title: "Số ngày liên tiếp em có nộp bài" }, h("b", {}, String(streak)), h("span", {}, "ngày học liên tiếp"))),
-      h("div", { class: "row" }, mBtn));
-
-    const due = rv.due || 0, total = rv.total || 0, mastered = rv.mastered || 0;
-    const stat = (n, l, cls) => h("div", { class: "bk-stat " + (cls || "") }, h("b", {}, String(n)), h("span", {}, l));
-    const book = h("div", { class: "book" },
-      h("h2", {}, "Sổ câu sai"),
-      total || mastered ? h("div", { class: "bk-stats" }, stat(due, "đến hạn ôn", due ? "due" : ""), stat(total, "đang trong sổ"), stat(mastered, "đã thuộc", "ok"))
-        : h("p", {}, "Sổ đang trống. Câu nào em làm sai sẽ tự vào đây, và hệ thống nhắc em ôn lại sau 1, 3, 7 rồi 21 ngày."),
-      rv.cw ? h("p", { class: "bk-cw" }, rv.cw + " câu em từng chọn “Chắc chắn” mà vẫn sai sẽ được ôn trước.") : null,
-      !due && total ? h("p", { class: "bk-next" }, "Lần ôn tiếp theo: " + hm(rv.next) + ".") : null,
-      h("div", { class: "row" },
-        due ? h("button", { class: "btn acc", onclick: startReview }, "Ôn ngay " + Math.min(due, 10) + " câu") : null,
-        total || mastered ? h("button", { class: "btn ghost", onclick: renderBook }, "Xem sổ") : null));
-    return h("div", { class: "today" }, mission, book);
-  }
   async function startMission() {
     try {
       const p = await rpc("daily_mission", { p_grade: grade });
@@ -453,39 +927,6 @@
     try { const p = await rpc("start_review", { p_n: 10 }); lastCtx = { review: true }; startExam(p); } catch (e) { fail(e); }
   }
   const figCache = {};
-  async function renderBook() {
-    stopTimers(); cur = null; setWho(); window.scrollTo(0, 0);
-    app.innerHTML = ""; app.append(h("div", { class: "wrap loading" }, "Đang tải…"));
-    let d;
-    try { d = await rpc("review_list"); } catch (e) { app.innerHTML = ""; fail(e); return; }
-    app.innerHTML = "";
-    const w = h("section", { class: "wrap" });
-    const now = new Date(d.server_now).getTime();
-    const items = d.items || [];
-    const due = items.filter((x) => !x.done && new Date(x.due_at).getTime() <= now + 6 * 3600e3).length;
-    w.append(h("div", { class: "review-t", style: "margin-top:22px" }, h("h2", { style: "margin:0;font-size:24px" }, "Sổ câu sai"), h("span", { class: "sp" }),
-      h("button", { class: "btn ghost sm", onclick: renderHome }, "Về trang chủ"),
-      due ? h("button", { class: "btn acc sm", onclick: startReview }, "Ôn ngay " + Math.min(due, 10) + " câu") : null));
-    w.append(h("p", { class: "sub", style: "color:var(--ink-2);max-width:70ch" }, "Mỗi câu sai được hẹn ôn lại sau 1 ngày. Lần ôn em sẽ gặp một câu cùng dạng: làm đúng thì hẹn xa dần 3, 7 rồi 21 ngày; đúng đủ 4 lần là đã thuộc. Làm sai thì quay lại ôn từ ngày mai."));
-    if (!items.length) { w.append(h("div", { class: "panel empty" }, "Sổ đang trống.")); app.append(w); return; }
-    const steps = (b, done) => h("span", { class: "boxes", title: done ? "Đã thuộc" : "Đã ôn đúng " + b + "/4 lần" }, [0, 1, 2, 3].map((i) => h("i", { class: done || i < b ? "on" : "" })));
-    const list = h("div", { class: "booklist" });
-    items.forEach((x) => {
-      const t = new Date(x.due_at).getTime();
-      const when = x.done ? h("span", { class: "pill ok" }, "Đã thuộc") : t <= now + 6 * 3600e3 ? h("span", { class: "pill warn" }, "Đến hạn ôn") : h("span", { class: "pill" }, "Ôn lúc " + hm(x.due_at));
-      list.append(h("div", { class: "bk-item" + (x.done ? " done" : "") },
-        h("div", { class: "bk-meta" }, h("b", {}, KT.lessonName(x.g + "-" + x.l, true)), h("span", { class: "lvl" }, LV[x.lv] || x.lv), h("span", {}, TYPE_SHORT[x.t]),
-          x.cw ? h("span", { class: "conftag cw" }, "Tưởng đúng mà sai") : null, x.wrong_n > 1 ? h("span", { class: "pill bad" }, "Sai " + x.wrong_n + " lần") : null,
-          h("span", { class: "sp" }), when, steps(x.box, x.done)),
-        h("div", { class: "qmini", html: x.q })));
-    });
-    w.append(list);
-    app.append(w);
-    const need = [...new Set(items.flatMap((x) => [...(x.q || "").matchAll(/data-fig="([0-9a-f]+)"/g)].map((m) => m[1])))].filter((k) => !figCache[k]);
-    if (need.length) { try { Object.assign(figCache, await api.rpc("get_figs", { p_ids: need.slice(0, 200) })); } catch (e) { } }
-    KT.typeset(list, figCache);
-  }
-
   function countsFor(lessons, mixGrades) {
     const set = new Set(lessons), c = { MC: 0, TF: 0, SA: 0 };
     for (const s of stats || []) if (set.has(s.g + "-" + s.l)) c[s.t] += s.n;

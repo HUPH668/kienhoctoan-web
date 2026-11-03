@@ -526,8 +526,9 @@
     if (!rows || !rows.length) return h("div", { class: "empty" }, opt.empty || "Chưa có ai trên bảng. Làm bài để ghi tên mình đầu tiên!");
     return h("ol", { class: "ranks" }, rows.map((r, i) => {
       const L = KT.lvOf(r.xp);
-      return h("li", { class: i < 3 ? "top" + (i + 1) : "" },
-        h("span", { class: "rk" }, String(i + 1)),
+      const n = i + (opt.start || 0);
+      return h("li", { class: n < 3 ? "top" + (n + 1) : "" },
+        h("span", { class: "rk" }, String(n + 1)),
         KT.levelBadge(L, "sm"),
         h("span", { class: "nm" }, h("b", {}, r.name), h("small", {}, KT.titleOf(L) + (r.class ? ", lớp " + r.class : ""))),
         h("span", { class: "xpv" }, KT.num(r[key]), h("small", {}, " KN")));

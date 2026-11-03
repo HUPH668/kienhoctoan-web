@@ -61,7 +61,7 @@
   const count = (root) => { if (!root) return; (root.matches && root.matches(COUNT_SEL) ? [root] : []).concat([...root.querySelectorAll(COUNT_SEL)]).forEach(countEl); };
 
   /* ---------- hiện dần khi cuộn + chuyển trang ---------- */
-  const RV_SEL = ".panel, .card, .kpi, .lv-card, .section-t, .fame-public, .auth, .pcard, .hero, .tbl-wrap, .review-t, .tj";
+  const RV_SEL = ".panel, .card, .kpi, .lv-card, .section-t, .fame-public, .auth, .pcard, .hero, .tbl-wrap, .review-t, .tj, .xpgain, .dhero, .mcard, .tcard, .badge, .sec-h, .book-cta, .dash-head, .ds-side, .dcard";
   const SKIP = ".modal, .one-q, .exam-head, .khc, .lv-room, .res-top";
   let pageAt = 0, batch = 0;
   const io = "IntersectionObserver" in window ? new IntersectionObserver((ents) => {
@@ -144,5 +144,18 @@
     bp.style.setProperty("--py", ((e.clientY - r.top) / r.height - 0.5).toFixed(3));
   }, { passive: true });
 
-  KT.ui = { count, reveal: scan };
+  /* ---------- pháo giấy chúc mừng (lên cấp, xong nhiệm vụ, mở khoá huy hiệu) ---------- */
+  function confetti() {
+    if (reduced()) return;
+    const box = document.createElement("div"); box.className = "confetti"; box.setAttribute("aria-hidden", "true");
+    const cols = ["#ffd23f", "#6a4be0", "#1d9a5b", "#ff5d73", "#2fa4ff", "#ffb400"];
+    for (let i = 0; i < 70; i++) {
+      const p = document.createElement("i");
+      p.style.cssText = "left:" + (Math.random() * 100) + "%;background:" + cols[i % cols.length] + ";--dx:" + ((Math.random() - 0.5) * 220).toFixed(0) + "px;--r:" + (Math.random() * 720 - 360).toFixed(0) + "deg;animation-delay:" + (Math.random() * 0.35).toFixed(2) + "s;animation-duration:" + (1.6 + Math.random() * 1.2).toFixed(2) + "s;" + (i % 3 ? "" : "border-radius:50%;width:8px;height:8px;");
+      box.append(p);
+    }
+    document.body.append(box); setTimeout(() => box.remove(), 3400);
+  }
+
+  KT.ui = { count, reveal: scan, confetti };
 })();
