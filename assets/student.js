@@ -24,7 +24,7 @@
   }
   function logout(expired) {
     if (sess) api.rpc("student_logout", { p_token: sess.token }).catch(() => { });
-    sess = null; store.del("kt_stu"); stopTimers(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
+    sess = null; store.del("kt_stu"); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
   function stopTimers() { stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
@@ -97,6 +97,7 @@
     who.innerHTML = "";
     if (!sess) return;
     who.append(h("span", { class: "who-n" }, h("b", {}, sess.name), h("small", {}, (sess.class ? "Lớp " + sess.class + ", mã " : "Mã ") + sess.code)),
+      window.KHCalc ? window.KHCalc.button() : null,
       h("button", { class: "btn ghost sm", onclick: () => { if (cur && cur.status === "doing") KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); } }, "Đăng xuất"));
   }
   document.getElementById("goHome").addEventListener("click", () => { if (cur && cur.status === "doing") { KT.confirm("Rời bài đang làm?", "Bài làm được lưu trên máy chủ, em có thể quay lại làm tiếp (đồng hồ vẫn chạy).", "Về trang chủ", () => { flush(); renderHome(); }); } else if (sess) renderHome(); });
