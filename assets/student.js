@@ -152,7 +152,7 @@
     const name = h("input", { id: "rName", autocomplete: "name", placeholder: "VD: Nguyễn Văn An", required: true, maxlength: 60 });
     const cls = h("select", { id: "rClass", required: true },
       h("option", { value: "", disabled: true, selected: true }, "— Chọn lớp em đang học ở trung tâm —"),
-      info.classes.map((c) => h("option", { value: c.id }, c.name)),
+      info.classes.map((c) => h("option", { value: c.id }, c.name + (c.teacher && c.teacher !== "Thầy" ? " (" + c.teacher + ")" : ""))),
       h("option", { value: "none" }, "Chưa có lớp – thầy sẽ xếp lớp"));
     const pin = h("input", { id: "rPin", type: "password", inputmode: "numeric", autocomplete: "new-password", placeholder: "6 chữ số", required: true, maxlength: 6, pattern: "[0-9]{6}" });
     const pin2 = h("input", { id: "rPin2", type: "password", inputmode: "numeric", autocomplete: "new-password", placeholder: "Nhập lại 6 chữ số", required: true, maxlength: 6 });
@@ -196,7 +196,7 @@
     stopTimers(); cur = null; setWho(); window.scrollTo(0, 0);
     app.innerHTML = ""; app.append(h("div", { class: "wrap loading" }, "Đang tải…"));
     try {
-      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10 }).catch(() => null), loadVids(),
+      [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 10, p_token: sess.token }).catch(() => null), loadVids(),
         dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {}))]);
       clockSkew = new Date(home.server_now).getTime() - Date.now();
       if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);

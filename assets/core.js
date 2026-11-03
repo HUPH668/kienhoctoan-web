@@ -172,6 +172,16 @@
         KT.store.set("kt_teacher_sess", teacherSess);
       } catch (e) { KT.api.logout(); throw Object.assign(new Error("Phiên đăng nhập đã hết, vui lòng đăng nhập lại."), { auth: true }); }
     },
+    // tạo tài khoản giáo viên mới (chờ quản trị duyệt). Trả về true nếu đăng nhập luôn được, false nếu cần xác nhận email trước.
+    async signup(email, password, meta) {
+      const d = await req("/auth/v1/signup", { email, password, data: Object.assign({ kh_teacher: true }, meta || {}) });
+      if (d && d.access_token) {
+        teacherSess = { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: Date.now() + (d.expires_in || 3600) * 1000, email: (d.user && d.user.email) || email };
+        KT.store.set("kt_teacher_sess", teacherSess);
+        return true;
+      }
+      return false;
+    },
     logout() { teacherSess = null; KT.store.del("kt_teacher_sess"); },
     teacher: () => teacherSess,
   };

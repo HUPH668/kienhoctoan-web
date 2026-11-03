@@ -17,7 +17,8 @@
   function setWho() {
     who.innerHTML = "";
     const s = api.teacher(); if (!s) return;
-    who.append(h("span", { class: "who-n" }, h("b", {}, "Giáo viên"), h("small", {}, s.email || "")),
+    const me = ov && ov.me;
+    who.append(h("span", { class: "who-n" }, h("b", {}, me && me.name ? me.name : "Giáo viên"), h("small", {}, me && me.role === "admin" ? "Quản trị" : s.email || "")),
       h("button", { class: "btn ghost sm", onclick: () => { api.logout(); stopPoll(); renderLogin(); } }, "Đăng xuất"));
   }
 
@@ -38,11 +39,62 @@
         h("a", { href: "./", role: "tab", "aria-selected": "false" }, "Học sinh"),
         h("button", { type: "button", class: "on", role: "tab", "aria-selected": "true" }, "Giáo viên")),
       h("p", { class: "sub" }, "Đăng nhập bằng email và mật khẩu tài khoản giáo viên."),
-      h("label", { for: "em" }, "Email"), em, h("label", { for: "pw" }, "Mật khẩu"), pw, err, btn))));
+      h("label", { for: "em" }, "Email"), em, h("label", { for: "pw" }, "Mật khẩu"), pw, err, btn,
+      h("p", { class: "sub", style: "margin:14px 0 0;text-align:center" }, "Giáo viên mới? ", h("a", { href: "#", onclick: (e) => { e.preventDefault(); renderSignup(); } }, "Tạo tài khoản giáo viên"))))));
     em.focus();
   }
 
+  /* ---------------- tạo tài khoản giáo viên mới ---------------- */
+  function renderSignup() {
+    stopPoll(); ov = null; setWho(); app.innerHTML = "";
+    const f = (id, type, ac, ph) => h("input", { id, type, autocomplete: ac, placeholder: ph || "", required: true });
+    const nm = f("su_nm", "text", "name", "Ví dụ: Nguyễn Thị Lan"), tt = f("su_tt", "text", "off", "Ví dụ: Cô Lan");
+    const ph = h("input", { id: "su_ph", type: "tel", autocomplete: "tel", placeholder: "Để thầy Hùng liên hệ khi duyệt" });
+    const em = f("su_em", "email", "username"), pw = f("su_pw", "password", "new-password", "Ít nhất 8 kí tự"), pw2 = f("su_pw2", "password", "new-password");
+    const err = h("div", { class: "note bad hidden" }), btn = h("button", { class: "btn", type: "submit" }, "Gửi đăng kí");
+    const form = h("form", { class: "login panel", onsubmit: async (e) => {
+      e.preventDefault(); err.classList.add("hidden");
+      const bad = (m) => { err.textContent = m; err.classList.remove("hidden"); };
+      if (nm.value.trim().split(/\s+/).length < 2) return bad("Nhập đầy đủ họ và tên.");
+      if (pw.value.length < 8) return bad("Mật khẩu cần ít nhất 8 kí tự.");
+      if (pw.value !== pw2.value) return bad("Hai lần nhập mật khẩu chưa giống nhau.");
+      btn.disabled = true;
+      try {
+        const ok = await api.signup(em.value.trim(), pw.value, { full_name: nm.value.trim(), title: tt.value.trim(), phone: ph.value.trim() });
+        if (ok) return load();
+        app.innerHTML = "";
+        app.append(h("section", { class: "wrap center" }, h("div", { class: "panel", style: "max-width:520px" }, h("h1", {}, "Kiểm tra hộp thư"),
+          h("p", {}, "Hệ thống vừa gửi thư xác nhận tới ", h("b", {}, em.value.trim()), ". Mở thư và bấm vào đường link xác nhận, sau đó quay lại đây đăng nhập."),
+          h("p", { class: "sub" }, "Sau khi đăng nhập, tài khoản cần thầy Hùng duyệt thì mới tạo lớp được."),
+          h("button", { class: "btn", onclick: () => renderLogin() }, "Về trang đăng nhập"))));
+      } catch (ex) {
+        bad(/already|registered|exists/i.test(ex.message) ? "Email này đã có tài khoản. Hãy đăng nhập." : /signup.*disabled|not allowed/i.test(ex.message) ? "Hệ thống chưa mở tạo tài khoản. Liên hệ thầy Hùng để được cấp tài khoản." : ex.message);
+      }
+      btn.disabled = false;
+    } }, h("h1", {}, "Tạo tài khoản giáo viên"),
+      h("p", { class: "sub" }, "Tài khoản mới cần thầy Hùng duyệt. Sau khi được duyệt, thầy cô tự tạo lớp và quản lí học sinh của mình; giáo viên khác không xem được lớp của thầy cô."),
+      h("label", { for: "su_nm" }, "Họ và tên"), nm, h("label", { for: "su_tt" }, "Học sinh gọi thầy cô là"), tt,
+      h("label", { for: "su_ph" }, "Số điện thoại"), ph, h("label", { for: "su_em" }, "Email"), em,
+      h("label", { for: "su_pw" }, "Mật khẩu"), pw, h("label", { for: "su_pw2" }, "Nhập lại mật khẩu"), pw2, err, btn,
+      h("p", { class: "sub", style: "margin:14px 0 0;text-align:center" }, "Đã có tài khoản? ", h("a", { href: "#", onclick: (e) => { e.preventDefault(); renderLogin(); } }, "Đăng nhập")));
+    app.append(h("section", { class: "wrap center" }, h("div", { class: "auth" }, KT.brandPanel("teacher"), form)));
+    nm.focus();
+  }
+  // tài khoản chưa được duyệt / bị khoá
+  function renderWait(me) {
+    stopPoll(); app.innerHTML = ""; setWho();
+    const T0 = { pending: ["Tài khoản đang chờ duyệt", "Thầy Hùng sẽ xem và duyệt tài khoản của thầy cô. Sau khi được duyệt, đăng nhập lại là dùng được."],
+      rejected: ["Tài khoản chưa được chấp nhận", "Thầy cô liên hệ thầy Hùng (0938 829 686) nếu cần thêm thông tin."],
+      locked: ["Tài khoản đang tạm khoá", "Thầy cô liên hệ thầy Hùng (0938 829 686) để mở lại."] }[me.status] || ["Chưa đăng nhập", ""];
+    app.append(h("section", { class: "wrap center" }, h("div", { class: "panel", style: "max-width:520px" }, h("h1", {}, T0[0]), h("p", {}, T0[1]),
+      h("div", { style: "display:flex;gap:8px;flex-wrap:wrap" }, h("button", { class: "btn", onclick: () => load() }, "Kiểm tra lại"),
+        h("button", { class: "btn ghost", onclick: () => { api.logout(); renderLogin(); } }, "Đăng xuất")))));
+  }
+
   async function load() {
+    let me;
+    try { me = await T("t_me"); } catch (e) { me = null; }
+    if (me && me.status && me.status !== "teacher") return renderWait(me);
     try { ov = await T("t_overview"); } catch (e) { api.logout(); renderLogin(e.message); return; }
     try { ov.n_reports = await T("t_reports_count"); } catch (e) { ov.n_reports = 0; }
     render();
@@ -50,11 +102,61 @@
   function render() {
     stopPoll(); setWho(); app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["videos", "Video ôn tập"], ["bank", "Ngân hàng câu hỏi"]];
+    const admin = !!(ov.me && ov.me.role === "admin");
+    const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)],
+      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")],
+      admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
+    if (!tabs.some(([k]) => k === tab)) tab = "monitor";
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, videos: tabVideos, bank: tabBank })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+  }
+
+  /* ================================================================ GIÁO VIÊN (chỉ quản trị) */
+  async function tabTeachers(el) {
+    let d;
+    try { d = await T("t_admin_teachers"); } catch (e) { return fail(e); }
+    const act = async (id, action, msg, extra) => {
+      try { await T("t_admin_teacher_set", Object.assign({ p_user: id, p_action: action }, extra || {})); KT.toast(msg, "ok"); ov = await T("t_overview"); ov.n_reports = await T("t_reports_count").catch(() => 0); render(); } catch (e) { fail(e); }
+    };
+    el.append(h("p", { class: "sub", style: "margin:0 0 14px" }, "Mỗi giáo viên chỉ thấy lớp, học sinh, bài giao và buổi live của mình. Ngân hàng câu hỏi dùng chung; chỉ thầy sửa được ngân hàng, video và câu bị báo lỗi. Giáo viên mới tự tạo tài khoản ở trang đăng nhập giáo viên (link “Tạo tài khoản giáo viên”) rồi chờ thầy duyệt ở đây."));
+    const pend = h("div", { class: "panel pending" }, h("h3", { style: "margin:0 0 8px" }, d.pending.length ? "Chờ duyệt (" + d.pending.length + ")" : "Chờ duyệt"));
+    if (!d.pending.length) pend.append(h("p", { class: "sub", style: "margin:0" }, "Chưa có tài khoản nào chờ duyệt."));
+    else {
+      const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Họ tên", "Học sinh gọi là", "Email", "Điện thoại", "Đăng kí lúc", ""].map((x) => h("th", {}, x)))));
+      const body = h("tbody");
+      d.pending.forEach((p) => {
+        const nm = h("input", { class: "mini", value: p.name || "", placeholder: "Họ tên", style: "min-width:150px" });
+        const tt = h("input", { class: "mini", value: p.title || "", placeholder: "Ví dụ: Cô Lan", style: "min-width:110px" });
+        body.append(h("tr", {}, h("td", {}, nm), h("td", {}, tt), h("td", {}, p.email), h("td", {}, p.phone ? h("a", { href: "tel:" + p.phone }, p.phone) : "–"), h("td", {}, KT.dt(p.at)),
+          h("td", {}, h("div", { style: "display:flex;gap:6px" },
+            h("button", { class: "btn sm", onclick: () => act(p.id, "approve", "Đã duyệt " + (nm.value || p.email), { p_name: nm.value, p_title: tt.value }) }, "Duyệt"),
+            h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Từ chối tài khoản?", "Tài khoản <b>" + esc(p.email) + "</b> sẽ không dùng được trang giáo viên.", "Từ chối", () => act(p.id, "reject", "Đã từ chối")) }, "Từ chối")))));
+      });
+      tb.append(body); pend.append(h("div", { class: "tbl-wrap" }, tb));
+    }
+    el.append(pend);
+    const list = h("div", { class: "panel", style: "margin-top:16px" }, h("h3", { style: "margin:0 0 8px" }, "Giáo viên đang dùng (" + d.teachers.length + ")"));
+    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Giáo viên", "Email", "Lớp", "Bài đã giao", "Giao gần nhất", ""].map((x) => h("th", {}, x)))));
+    const body = h("tbody");
+    d.teachers.forEach((t) => {
+      const cls = t.classes.length ? t.classes.map((c) => c.name + " (" + c.n + " em)").join(", ") : "Chưa có lớp";
+      body.append(h("tr", { class: t.active ? "" : "muted" },
+        h("td", {}, h("b", {}, t.name || t.email), h("div", { class: "sub", style: "font-size:13px" }, (t.title || "") + (t.role === "admin" ? ", quản trị" : "") + (t.active ? "" : ", đang khoá"))),
+        h("td", {}, t.email || "–"), h("td", { style: "white-space:normal;max-width:280px" }, cls), h("td", {}, String(t.n_assign)), h("td", {}, t.last ? KT.dt(t.last) : "–"),
+        h("td", {}, t.me || t.role === "admin" ? "" : h("div", { style: "display:flex;gap:6px" },
+          h("button", { class: "btn ghost sm", onclick: () => {
+            const nm = h("input", { value: t.name || "" }), tt = h("input", { value: t.title || "" });
+            let close; close = KT.modal([h("h3", {}, "Sửa thông tin giáo viên"), h("label", {}, "Họ tên"), nm, h("label", {}, "Học sinh gọi là"), tt,
+              h("div", { style: "display:flex;gap:8px;margin-top:14px" }, h("button", { class: "btn", onclick: () => { close(); act(t.id, "edit", "Đã lưu", { p_name: nm.value, p_title: tt.value }); } }, "Lưu"),
+                h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"))]);
+          } }, "Sửa"),
+          t.active ? h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Khoá tài khoản?", "<b>" + esc(t.name || t.email) + "</b> sẽ không vào được trang giáo viên. Lớp và học sinh vẫn giữ nguyên, học sinh vẫn học bình thường.", "Khoá", () => act(t.id, "lock", "Đã khoá")) }, "Khoá")
+            : h("button", { class: "btn sm", onclick: () => act(t.id, "unlock", "Đã mở khoá") }, "Mở khoá")))));
+    });
+    tb.append(body); list.append(h("div", { class: "tbl-wrap" }, tb)); el.append(list);
   }
 
 
@@ -937,8 +1039,8 @@
       try { await T("t_register_open", { p_open: sw.checked }); KT.toast(sw.checked ? "Đã mở cho học sinh tự đăng ký" : "Đã tạm đóng đăng ký", "ok"); } catch (e) { fail(e); sw.checked = !sw.checked; }
     } });
     box.append(h("div", { class: "review-t" }, h("h3", { style: "margin:0" }, "Học sinh tự đăng ký" + (d.items.length ? " – chờ duyệt (" + d.items.length + ")" : "")), h("span", { class: "sp" }),
-      h("label", { class: "chk" }, sw, "Cho phép học sinh tự đăng ký trên trang đăng nhập")));
-    if (!d.items.length) { box.append(h("p", { class: "sub", style: "margin:8px 0 0" }, d.open ? "Chưa có đăng ký mới. Học sinh bấm “Đăng ký” ở trang đăng nhập, tài khoản chỉ dùng được sau khi thầy duyệt ở đây." : "Đăng ký đang tạm đóng.")); el.append(box); return; }
+      d.admin ? h("label", { class: "chk" }, sw, "Cho phép học sinh tự đăng ký trên trang đăng nhập") : null));
+    if (!d.items.length) { box.append(h("p", { class: "sub", style: "margin:8px 0 0" }, d.open ? "Chưa có đăng ký mới. Học sinh bấm “Đăng ký” ở trang đăng nhập, tài khoản chỉ dùng được sau khi được duyệt ở đây." : "Đăng ký đang tạm đóng.")); el.append(box); return; }
     const act = async (ids, ok, cls) => {
       try { const r = await T("t_approve", { p_ids: ids, p_approve: ok, p_class: cls || null }); KT.toast((ok ? "Đã duyệt " : "Đã từ chối ") + r.n + " học sinh", "ok"); ov = await T("t_overview"); render(); } catch (e) { fail(e); }
     };
