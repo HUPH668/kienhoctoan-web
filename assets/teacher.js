@@ -50,13 +50,271 @@
   function render() {
     stopPoll(); setWho(); app.innerHTML = "";
     const w = h("section", { class: "wrap" });
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["videos", "Video ôn tập"], ["bank", "Ngân hàng câu hỏi"]];
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", ov.n_pending ? h("span", {}, "Lớp & học sinh ", h("span", { class: "tabbadge" }, String(ov.n_pending))) : "Lớp & học sinh"], ["reports", ov.n_reports ? h("span", {}, "Câu bị báo lỗi ", h("span", { class: "tabbadge" }, String(ov.n_reports))) : "Câu bị báo lỗi"], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["videos", "Video ôn tập"], ["bank", "Ngân hàng câu hỏi"]];
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
-      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; render(); } }, lab))));
+      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, videos: tabVideos, bank: tabBank })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, videos: tabVideos, bank: tabBank })[tab](body);
   }
 
+
+  /* ================================================================ LỚP HỌC LIVE */
+  let liveCur = null;
+  const LWD = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+  const lwhen = (s) => { const d = new Date(s); return LWD[d.getDay()] + " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) + " · " + d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }); };
+  const lstatus = (s) => s === "live" ? h("span", { class: "lv-badge" }, h("i", {}), "ĐANG LIVE") : s === "ended" ? h("span", { class: "lv-badge off" }, "ĐÃ KẾT THÚC") : h("span", { class: "lv-badge soon" }, "SẮP DIỄN RA");
+  const mmss = (sec) => { sec = +sec || 0; const m = Math.floor(sec / 60); return m >= 60 ? Math.floor(m / 60) + " giờ " + (m % 60) + "′" : m + "′" + String(sec % 60).padStart(2, "0"); };
+
+  async function tabLive(el) {
+    if (liveCur) return liveConsole(el, liveCur);
+    el.append(h("div", { class: "review-t" }, h("h2", { style: "margin:0" }, "Lớp học live"), h("span", { class: "sp" }),
+      h("button", { class: "btn sm", onclick: () => liveForm(null, () => { el.innerHTML = ""; tabLive(el); }) }, "+ Tạo buổi học")));
+    el.append(h("details", { class: "panel lv-guide", style: "margin-top:14px" }, h("summary", {}, "Cách phát live trên YouTube để chỉ học sinh của thầy xem được"),
+      h("ol", {},
+        h("li", {}, "YouTube Studio → ", h("b", {}, "Tạo → Phát trực tiếp"), ". Lần đầu bật tính năng phát trực tiếp phải chờ khoảng 24 giờ."),
+        h("li", {}, "Chế độ hiển thị chọn ", h("b", {}, "Không công khai"), " — không hiện trên kênh, không tìm thấy trên YouTube."),
+        h("li", {}, "Trong phần cài đặt buổi live, bật ", h("b", {}, "Cho phép nhúng"), "."),
+        h("li", {}, "Chép link buổi live (dạng youtube.com/live/… ) dán vào ô “Link YouTube” của buổi học ở đây."),
+        h("li", {}, "Đến giờ: bật phát trên YouTube (OBS hoặc điện thoại) rồi bấm ", h("b", {}, "Bắt đầu live"), " trong phòng điều khiển — học sinh lúc đó mới thấy video."),
+        h("li", {}, "Học xong: bấm ", h("b", {}, "Kết thúc"), ", rồi trên YouTube chuyển video sang ", h("b", {}, "Riêng tư"), "."))));
+    const box = h("div", { class: "lv-tlist" }, h("div", { class: "loading" }, "Đang tải…"));
+    el.append(box);
+    let list; try { list = await T("t_live_list"); } catch (e) { box.innerHTML = ""; fail(e); return; }
+    box.innerHTML = "";
+    if (!list.length) { box.append(h("div", { class: "panel empty" }, "Chưa có buổi học nào. Bấm “+ Tạo buổi học” để lên lịch.")); return; }
+    list.forEach((s) => box.append(h("div", { class: "lv-tcard " + s.status },
+      h("div", { class: "lv-date" }, h("b", {}, new Date(s.starts_at).getDate()), h("span", {}, "Th" + (new Date(s.starts_at).getMonth() + 1))),
+      h("div", { class: "lv-tcard-tx" }, h("div", {}, lstatus(s.status)), h("b", {}, s.title),
+        h("span", {}, lwhen(s.starts_at) + " · " + s.minutes + " phút · Lớp " + s.classes.join(", ")),
+        h("span", { class: "sub" }, s.status === "scheduled" ? (s.yt_url ? "Đã có link YouTube" : "⚠ Chưa có link YouTube") : s.n_joined + "/" + s.n_students + " học sinh tham gia · " + s.n_polls + " câu hỏi nhanh")),
+      h("div", { class: "lv-tcard-act" },
+        h("button", { class: "btn sm" + (s.status === "live" ? " acc" : ""), onclick: () => { liveCur = s.id; render(); } }, s.status === "ended" ? "Xem lại" : "Phòng điều khiển"),
+        s.status !== "ended" ? h("button", { class: "btn ghost sm", onclick: () => liveForm(s, () => { el.innerHTML = ""; tabLive(el); }) }, "Sửa") : null,
+        h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá buổi học?", "Xoá “" + KT.esc(s.title) + "” cùng điểm danh, tin nhắn và câu hỏi nhanh của buổi này.", "Xoá",
+          async () => { await T("t_live_status", { p_id: s.id, p_status: "delete" }).catch(fail); el.innerHTML = ""; tabLive(el); }) }, "Xoá")))));
+  }
+
+  function liveForm(s, after) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const local = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    const t0 = s ? new Date(s.starts_at) : (() => { const d = new Date(Date.now() + 864e5); d.setHours(19, 30, 0, 0); return d; })();
+    const f = {
+      title: h("input", { id: "lvT", maxlength: 150, value: s ? s.title : "", placeholder: "VD: Chữa đề thi thử tốt nghiệp số 3" }),
+      start: h("input", { id: "lvS", type: "datetime-local", value: local(t0) }),
+      min: h("input", { id: "lvM", type: "number", min: 10, max: 300, value: s ? s.minutes : 90 }),
+      url: h("input", { id: "lvU", type: "url", value: s ? s.yt_url || "" : "", placeholder: "https://www.youtube.com/live/…  (có thể dán sau)" }),
+      note: h("textarea", { id: "lvN", rows: 2, maxlength: 500, placeholder: "Dặn học sinh chuẩn bị gì (không bắt buộc)" }, s ? s.note : ""),
+      g: h("select", { id: "lvG" }, [h("option", { value: "" }, "— Không gắn bài —")].concat(KT.GRADES.map((g) => h("option", { value: g, selected: s && s.g === g }, "Toán " + g)))),
+      l: h("select", { id: "lvL" }),
+    };
+    const fillL = () => { f.l.innerHTML = ""; const g = +f.g.value; f.l.disabled = !g; if (!g) return;
+      CUR[g].chapters.forEach((ch) => { const og = h("optgroup", { label: "Chương " + romans[ch.no] }); ch.lessons.forEach((L) => og.append(h("option", { value: L.no, selected: s && s.l === L.no }, "Bài " + L.no + ". " + L.name))); f.l.append(og); }); };
+    f.g.onchange = fillL; fillL();
+    const chosen = new Set(s ? s.class_ids : []);
+    const cls = h("div", { class: "lv-cls" }, (ov.classes || []).map((c) => h("label", { class: "chk" }, h("input", { type: "checkbox", value: c.id, checked: chosen.has(c.id) }), c.name + " (" + c.n + ")")));
+    const L = (id, t) => h("label", { for: id }, t);
+    let close;
+    close = KT.modal([h("h3", {}, s ? "Sửa buổi học" : "Tạo buổi học live"),
+      h("div", { class: "form" },
+        h("div", { class: "full" }, L("lvT", "Tên buổi học"), f.title),
+        h("div", { class: "full" }, h("label", {}, "Lớp được vào học"), cls),
+        h("div", {}, L("lvS", "Bắt đầu lúc"), f.start), h("div", {}, L("lvM", "Thời lượng (phút)"), f.min),
+        h("div", {}, L("lvG", "Gắn với bài học"), f.g), h("div", {}, L("lvL", "Bài"), f.l),
+        h("div", { class: "full" }, L("lvU", "Link YouTube của buổi live (chế độ Không công khai)"), f.url),
+        h("div", { class: "full" }, L("lvN", "Ghi chú cho học sinh"), f.note)),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async (e) => {
+          const ids = [...cls.querySelectorAll("input:checked")].map((x) => +x.value);
+          const d = new Date(f.start.value);
+          e.target.disabled = true;
+          try {
+            const r = await T("t_live_save", { p_id: s ? s.id : null, p_title: f.title.value, p_classes: ids, p_starts: isNaN(d) ? null : d.toISOString(), p_minutes: +f.min.value,
+              p_url: f.url.value, p_g: +f.g.value || null, p_l: +f.g.value ? +f.l.value : null, p_note: f.note.value });
+            if (r.error) { e.target.disabled = false; return KT.toast(r.error, "bad"); }
+            close(); KT.toast(s ? "Đã lưu buổi học" : "Đã tạo buổi học. Học sinh các lớp đã chọn sẽ thấy lịch trên trang chủ.", "ok"); after();
+          } catch (ex) { e.target.disabled = false; fail(ex); }
+        } }, s ? "Lưu" : "Tạo buổi học"))], { wide: true });
+  }
+
+  // phòng điều khiển của giáo viên
+  async function liveConsole(el, id) {
+    let st = null, lastChat = 0, bankG = null, bankL = null, secs = 30, pollSig = null, ringT = null;
+    const figs = {};
+    const head = h("div", {}), ctrl = h("div", { class: "lv-ctrl" });
+    const preview = h("div", { class: "lv-tprev" });
+    const pollNow = h("div", { class: "lv-tpoll" });
+    const launcher = h("div", { class: "panel lv-launch" });
+    const history = h("div", { class: "lv-hist" });
+    const people = h("div", { class: "panel lv-people" });
+    const chatList = h("div", { class: "lv-chat t" });
+    const chatIn = h("input", { type: "text", maxlength: 500, placeholder: "Nhắn cho cả lớp (hiện nổi bật)…" });
+    const sendT = async () => { const m = chatIn.value.trim(); if (!m) return; chatIn.value = ""; await T("t_live_chat", { p_id: id, p_msg: m }).catch(fail); refresh(); };
+    chatIn.addEventListener("keydown", (e) => { if (e.key === "Enter") sendT(); });
+    el.append(h("div", { class: "lv-console" }, head,
+      h("div", { class: "lv-cgrid" },
+        h("div", {}, h("div", { class: "lv-row2" }, preview, ctrl), pollNow, launcher, history),
+        h("div", {}, people, h("div", { class: "panel lv-tchat" }, h("h3", {}, "Trò chuyện"), chatList, h("div", { class: "lv-send" }, chatIn, h("button", { class: "btn sm", onclick: sendT }, "Gửi")))))));
+
+    // bảng mở câu hỏi nhanh
+    const secRow = h("div", { class: "lv-secs" }, h("span", { class: "sub" }, "Thời gian:"), [20, 30, 45, 60, 90, 120].map((x) =>
+      h("button", { type: "button", class: "chipbtn" + (x === secs ? " on" : ""), onclick: (e) => { secs = x; secRow.querySelectorAll(".chipbtn").forEach((b) => b.classList.remove("on")); e.target.classList.add("on"); } }, x + " giây")));
+    let lTab = "board";
+    const lBody = h("div", {});
+    const lTabs = h("div", { class: "lv-ltabs" }, [["board", "Câu trên bảng (A–D)"], ["bank", "Từ ngân hàng câu hỏi"], ["type", "Tự gõ câu hỏi"]].map(([k, t]) =>
+      h("button", { type: "button", class: k === lTab ? "on" : "", onclick: (e) => { lTab = k; lTabs.querySelectorAll("button").forEach((b) => b.classList.remove("on")); e.target.classList.add("on"); drawLaunch(); } }, t)));
+    launcher.append(h("h3", {}, "⚡ Đưa câu hỏi nhanh lên màn hình học sinh"), lTabs, secRow, lBody);
+    const openPoll = async (args) => {
+      if (!st || st.session.status !== "live") return KT.toast("Bấm “Bắt đầu live” trước khi đưa câu hỏi.", "bad");
+      try { const r = await T("t_live_poll", Object.assign({ p_id: id, p_seconds: secs }, args)); if (r.error) return KT.toast(r.error, "bad"); KT.toast("Đã đưa câu hỏi lên · " + secs + " giây", "ok"); refresh(); }
+      catch (e) { fail(e); }
+    };
+    function drawLaunch() {
+      lBody.innerHTML = "";
+      if (lTab === "board") {
+        let key = null;
+        const keys = h("div", { class: "lv-keys" }, ["A", "B", "C", "D"].map((x, i) => h("button", { type: "button", class: "lv-key", onclick: (e) => { key = key === i ? null : i; keys.querySelectorAll(".lv-key").forEach((b, j) => b.classList.toggle("on", j === key)); } }, x)));
+        lBody.append(h("p", { class: "sub" }, "Thầy viết câu hỏi trên bảng / màn hình live, học sinh chỉ chọn A, B, C hoặc D. Bấm vào đáp án đúng (nếu muốn chấm) rồi đưa lên."),
+          keys, h("button", { class: "btn acc", onclick: () => openPoll({ p_q: "", p_o: ["A", "B", "C", "D"], p_key: key }) }, "Đưa lên ngay"));
+      } else if (lTab === "type") {
+        const q = h("textarea", { rows: 2, placeholder: "Nội dung câu hỏi (gõ công thức trong dấu $…$, ví dụ $x^2-1=0$)" });
+        let key = 0;
+        const os = [0, 1, 2, 3].map((i) => h("input", { type: "text", placeholder: "Phương án " + "ABCD"[i] }));
+        const rows = h("div", { class: "lv-typeo" }, os.map((o, i) => h("label", { class: "lv-typerow" }, h("input", { type: "radio", name: "lvk", checked: i === 0, onchange: () => (key = i) }), h("b", {}, "ABCD"[i]), o)));
+        lBody.append(q, h("p", { class: "sub" }, "Chọn nút tròn ở phương án đúng:"), rows,
+          h("button", { class: "btn acc", onclick: () => { const o = os.map((x) => x.value.trim()).filter(Boolean); if (o.length < 2) return KT.toast("Nhập ít nhất 2 phương án.", "bad");
+            openPoll({ p_q: KT.esc(q.value.trim()), p_o: os.map((x) => KT.esc(x.value.trim())).filter(Boolean), p_key: key < o.length ? key : null }); } }, "Đưa lên ngay"));
+      } else {
+        const gS = h("select", {}, KT.GRADES.map((g) => h("option", { value: g, selected: g === (bankG || st.session.g || (ov.classes[0] && ov.classes[0].grade)) }, "Toán " + g)));
+        const lS = h("select", {});
+        const list = h("div", { class: "lv-bank" });
+        const fillL = () => { lS.innerHTML = ""; CUR[+gS.value].chapters.forEach((ch) => { const og = h("optgroup", { label: "Chương " + romans[ch.no] }); ch.lessons.forEach((L) => og.append(h("option", { value: L.no, selected: +gS.value === (bankG || st.session.g) && L.no === (bankL || st.session.l) }, "Bài " + L.no + ". " + L.name))); lS.append(og); }); };
+        const load = async () => {
+          bankG = +gS.value; bankL = +lS.value; list.innerHTML = ""; list.append(h("div", { class: "loading" }, "Đang tải…"));
+          let qs; try { qs = await T("t_live_bank", { p_g: bankG, p_l: bankL }); } catch (e) { return fail(e); }
+          list.innerHTML = "";
+          if (!qs.length) { list.append(h("div", { class: "empty" }, "Bài này chưa có câu trắc nghiệm nhiều phương án.")); return; }
+          qs.forEach((x) => list.append(h("div", { class: "lv-bq" },
+            h("div", { class: "lv-bq-m" }, h("span", { class: "lvl" }, KT.LV[x.lv] || x.lv), h("span", { class: "mono sub" }, x.tag || ""),
+              h("button", { class: "btn sm acc", onclick: () => openPoll({ p_qid: x.id }) }, "Đưa lên")),
+            h("div", { class: "qmini", html: x.q }),
+            h("ol", { class: "prev-o", type: "A" }, x.o.map((o, i) => h("li", { class: i === x.key ? "ok" : "", html: o }))))));
+          const need = [...new Set(qs.flatMap((x) => [...((x.q || "") + JSON.stringify(x.o)).matchAll(/data-fig=\\?"([0-9a-f]+)/g)].map((m) => m[1])))].filter((k) => !figs[k]);
+          if (need.length) { try { Object.assign(figs, await api.rpc("get_figs", { p_ids: need.slice(0, 200) })); } catch (e) { } }
+          KT.typeset(list, figs);
+        };
+        gS.onchange = () => { fillL(); load(); }; lS.onchange = load; fillL();
+        lBody.append(h("div", { class: "lv-bsel" }, gS, lS), list); load();
+      }
+    }
+
+    function drawHead() {
+      const s = st.session;
+      head.innerHTML = "";
+      head.append(h("div", { class: "review-t" },
+        h("button", { class: "btn ghost sm", onclick: () => { liveCur = null; stopPoll(); render(); } }, "← Danh sách"),
+        h("div", {}, h("h2", { style: "margin:0;font-size:20px" }, s.title), h("div", { class: "sub" }, lwhen(s.starts_at) + " · " + s.minutes + " phút · Lớp " + s.classes.join(", "))),
+        h("span", { class: "sp" }), lstatus(s.status)));
+      ctrl.innerHTML = "";
+      const on = st.people.filter((p) => p.online).length, joined = st.people.filter((p) => p.joined).length;
+      ctrl.append(h("div", { class: "lv-kpis" },
+        h("div", {}, h("b", {}, String(on)), h("span", {}, "Đang xem")),
+        h("div", {}, h("b", {}, joined + "/" + st.people.length), h("span", {}, "Đã vào lớp")),
+        h("div", {}, h("b", {}, String(st.polls.length)), h("span", {}, "Câu hỏi nhanh"))));
+      if (s.status === "scheduled") ctrl.append(h("button", { class: "btn lv-go", onclick: async () => { const r = await T("t_live_status", { p_id: id, p_status: "live" }).catch(fail); if (r && r.error) return KT.toast(r.error, "bad"); KT.toast("Đã mở lớp — học sinh thấy video ngay bây giờ", "ok"); refresh(); } }, "● Bắt đầu live"));
+      else if (s.status === "live") ctrl.append(h("button", { class: "btn lv-stop", onclick: () => KT.confirm("Kết thúc buổi học?", "Học sinh sẽ không xem video trên web được nữa. Nhớ chuyển video trên YouTube sang <b>Riêng tư</b>.", "Kết thúc", async () => { await T("t_live_status", { p_id: id, p_status: "ended" }).catch(fail); refresh(); }) }, "■ Kết thúc buổi học"));
+      else ctrl.append(h("button", { class: "btn ghost", onclick: async () => { await T("t_live_status", { p_id: id, p_status: "live" }).catch(fail); refresh(); } }, "Mở lại lớp"));
+      ctrl.append(h("button", { class: "btn ghost sm", onclick: () => exportLive() }, "Xuất điểm danh (Excel)"));
+      preview.innerHTML = "";
+      if (s.yt_vid) preview.append(h("div", { class: "lv-video sm" }, h("iframe", { src: "https://www.youtube-nocookie.com/embed/" + s.yt_vid + "?autoplay=1&mute=1&rel=0&modestbranding=1", title: "Xem trước", allow: "autoplay; encrypted-media", allowfullscreen: "" })));
+      else preview.append(h("div", { class: "lv-video sm empty" }, h("div", {}, "Chưa có link YouTube", h("br"), h("button", { class: "btn sm", onclick: () => liveForm(Object.assign({}, s, { class_ids: s.class_ids }), refresh) }, "Thêm link"))));
+    }
+    function drawPollNow() {
+      const p = st.polls[0];
+      const active = p && (p.status === "open" || (Date.now() - new Date(p.opened_at).getTime() < 600e3));
+      const sig = active ? JSON.stringify([p.id, p.status, p.n, p.counts, p.fastest]) : "none";
+      if (sig === pollSig) return; pollSig = sig;
+      pollNow.innerHTML = ""; clearInterval(ringT);
+      if (!active) { pollNow.className = "lv-tpoll hidden"; return; }
+      pollNow.className = "lv-tpoll panel " + p.status;
+      const on = Math.max(st.people.filter((x) => x.online).length, p.n);
+      const timer = h("b", { class: "lv-tleft" });
+      if (p.status === "open") { const end = Date.now() + p.left_ms; const stp = () => { const l = Math.max(0, end - Date.now()); timer.textContent = Math.ceil(l / 1000) + " giây"; if (!l) { clearInterval(ringT); refresh(); } }; stp(); ringT = setInterval(stp, 250); }
+      else timer.textContent = p.status === "revealed" ? "Đã công bố" : "Hết giờ";
+      const letters = p.o.every((x, i) => String(x).trim() === "ABCDEFGH"[i]);
+      pollNow.append(h("div", { class: "lv-tpoll-h" }, h("span", {}, "⚡ Câu hỏi đang chạy"), timer, h("span", { class: "sp" }),
+        h("span", { class: "lv-ans" }, h("b", {}, p.n + "/" + on), " đã trả lời")));
+      if (p.q && !letters) pollNow.append(h("div", { class: "qmini", html: p.q }));
+      const mx = Math.max(1, ...p.counts);
+      pollNow.append(h("div", { class: "lv-tbars" }, p.o.map((o, i) => h("div", { class: "lv-tbar" + (p.key === i ? " ok" : "") },
+        h("span", { class: "L" }, "ABCDEFGH"[i]), letters ? h("span", {}) : h("span", { class: "lv-tbar-o", html: o }),
+        h("span", { class: "lv-tbar-b" }, h("i", { style: "width:" + (100 * p.counts[i] / mx) + "%" })), h("b", {}, String(p.counts[i]))))));
+      const acts = h("div", { class: "lv-tpoll-a" });
+      if (p.status === "open") acts.append(h("button", { class: "btn ghost sm", onclick: () => T("t_live_poll_set", { p_poll: p.id, p_action: "add30" }).then(refresh).catch(fail) }, "+30 giây"),
+        h("button", { class: "btn ghost sm", onclick: () => T("t_live_poll_set", { p_poll: p.id, p_action: "close" }).then(refresh).catch(fail) }, "Dừng nhận"));
+      if (p.status !== "revealed") acts.append(h("button", { class: "btn acc sm", onclick: () => T("t_live_poll_set", { p_poll: p.id, p_action: "reveal" }).then(refresh).catch(fail) }, p.key != null ? "Công bố đáp án" : "Công bố kết quả"));
+      else if (p.key != null) acts.append(h("span", { class: "lv-tok" }, "✓ " + p.n_ok + "/" + p.n + " bạn đúng (" + (p.n ? Math.round(100 * p.n_ok / p.n) : 0) + "%)" + (p.fastest.length ? " · Nhanh nhất: " + p.fastest.join(", ") : "")));
+      pollNow.append(acts);
+      KT.typeset(pollNow, figs);
+    }
+    function drawHistory() {
+      history.innerHTML = "";
+      const done = st.polls.filter((p) => p.key != null && p.status !== "open");
+      if (!done.length) return;
+      history.append(h("div", { class: "section-t" }, "Các câu hỏi nhanh trong buổi"));
+      done.forEach((p, i) => history.append(h("div", { class: "lv-hrow" }, h("b", {}, "Câu " + (done.length - i)),
+        h("span", { class: "lv-hq", html: p.q ? p.q.replace(/<[^>]+>/g, " ").slice(0, 90) : "Câu trên bảng · đáp án " + "ABCD"[p.key] }),
+        h("span", { class: "pill " + (p.n && p.n_ok / p.n >= 0.7 ? "ok" : p.n && p.n_ok / p.n >= 0.4 ? "warn" : "bad") }, p.n_ok + "/" + p.n + " đúng"))));
+    }
+    function drawPeople() {
+      people.innerHTML = "";
+      const on = st.people.filter((p) => p.online).length;
+      people.append(h("h3", {}, "Điểm danh ", h("span", { class: "sub" }, on + " đang xem · " + st.people.filter((p) => p.joined).length + "/" + st.people.length + " đã vào")));
+      const ul = h("div", { class: "lv-plist" });
+      st.people.forEach((p) => ul.append(h("div", { class: "lv-p" + (p.online ? " on" : p.joined ? " left" : " no") },
+        h("i", { class: "dot", title: p.online ? "Đang xem" : p.joined ? "Đã rời lớp" : "Chưa vào" }),
+        h("div", { class: "lv-p-n" }, h("b", {}, p.name), h("span", {}, p.code + (st.session.classes.length > 1 ? " · " + p.class : ""))),
+        p.dup ? h("span", { class: "flag hi", title: "Tài khoản này mở lớp học ở hai nơi cùng lúc " + p.dup + " lần — có thể đã đưa tài khoản cho người khác" }, "⚠ 2 nơi") : null,
+        h("span", { class: "lv-p-s" }, p.joined ? mmss(p.seconds) : "–"),
+        h("span", { class: "lv-p-s" }, p.answered ? p.correct + "/" + p.answered : ""))));
+      people.append(ul);
+    }
+    function addChat(list) {
+      (list || []).forEach((c) => {
+        const old = chatList.querySelector('[data-id="' + c.id + '"]');
+        const node = h("div", { class: "lv-msg" + (c.t ? " t" : "") + (c.hidden ? " hid" : ""), "data-id": c.id },
+          h("div", { class: "lv-msg-h" }, c.t ? h("span", { class: "lv-tbadge" }, "Thầy") : h("b", {}, c.name), h("time", {}, new Date(c.at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })),
+            c.t ? null : h("button", { class: "lv-hide", title: c.hidden ? "Hiện lại" : "Ẩn tin nhắn này với học sinh", onclick: () => T("t_live_chat", { p_id: id, p_hide: c.id }).then(() => { lastChat = Math.min(lastChat, c.id - 1); refresh(); }).catch(fail) }, c.hidden ? "Hiện" : "Ẩn")),
+          h("div", { class: "lv-msg-b" }, c.msg));
+        if (old) old.replaceWith(node); else { chatList.append(node); }
+        lastChat = Math.max(lastChat, c.id);
+      });
+      if (list && list.length) chatList.scrollTop = chatList.scrollHeight;
+    }
+    function exportLive() {
+      const rows = [["Mã HS", "Họ tên", "Lớp", "Tham gia", "Thời gian xem (phút)", "Câu đã trả lời", "Câu đúng", "Mở 2 nơi"]].concat(st.people.map((p) =>
+        [p.code, p.name, p.class, p.joined ? "Có" : "Không", p.joined ? Math.round(p.seconds / 60) : "", p.answered, p.correct, p.dup || ""]));
+      download("DiemDanh_" + st.session.title.replace(/[^\p{L}\p{N}]+/gu, "_").slice(0, 40) + ".csv", rows);
+    }
+    let firstDraw = true;
+    async function refresh() {
+      try {
+        const r = await T("t_live_state", { p_id: id, p_after: lastChat });
+        if (r.error) { KT.toast(r.error, "bad"); liveCur = null; stopPoll(); render(); return; }
+        const changedStatus = !st || st.session.status !== r.session.status || st.session.yt_vid !== r.session.yt_vid;
+        st = r;
+        if (changedStatus || firstDraw) drawHead(); else {
+          const on = st.people.filter((p) => p.online).length, joined = st.people.filter((p) => p.joined).length;
+          const k = ctrl.querySelectorAll(".lv-kpis b"); if (k.length) { k[0].textContent = on; k[1].textContent = joined + "/" + st.people.length; k[2].textContent = st.polls.length; }
+        }
+        if (firstDraw) drawLaunch();
+        firstDraw = false;
+        drawPollNow(); drawHistory(); drawPeople(); addChat(r.chat);
+      } catch (e) { fail(e); stopPoll(); }
+    }
+    await refresh();
+    stopPoll();
+    poll = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 3000);
+  }
 
   /* ---------------- VIDEO ÔN TẬP ---------------- */
   let vidGrade = null;

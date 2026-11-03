@@ -27,7 +27,7 @@
     sess = null; store.del("kt_stu"); stopTimers(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
-  function stopTimers() { clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
+  function stopTimers() { stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
 
   /* ---------------- chống gian lận: ghi lại việc rời trang, chặn sao chép đề ---------------- */
   let guardOff = () => { };
@@ -204,6 +204,7 @@
     const w = h("section", { class: "wrap" });
     w.append(h("div", { class: "hero" }, h("div", { class: "hero-tx" }, h("h1", {}, "Chào " + home.student.name.split(" ").slice(-1)[0] + "!"), h("p", {}, grade >= 10 ? "Làm các bài được giao, hoặc tự luyện theo bài, chương, học kì, thi tốt nghiệp và đánh giá năng lực." : "Làm các bài được giao, hoặc tự luyện theo bài, chương, giữa kì và cuối kì.")), levelCard()));
 
+    w.append(liveSlot());
     if ((home.remedials || []).length) w.append(remedialBlock());
     w.append(todayBlock());
 
@@ -961,6 +962,240 @@
     }
     if (!out.length) out.push({ title: "Thử sức đề khó hơn", text: "Em đã nắm vững phạm vi này. Hãy thử đề rộng hơn.", label: p.grade === 12 ? "Thi thử tốt nghiệp" : p.grade === 9 ? "Ôn thi vào 10" : "Đề cả năm", bp: p.grade === 12 ? KT.blueprint.tn() : p.grade === 9 ? KT.blueprint.ts10() : KT.blueprint.grade(p.grade || grade) });
     return out;
+  }
+
+  /* ================================================================ LỚP HỌC LIVE */
+  let liveTimer = null, liveWm = null;
+  const stopLive = () => { clearTimeout(liveTimer); liveTimer = null; clearInterval(liveWm); liveWm = null; };
+  const liveTab = (() => { let t = null; try { t = sessionStorage.getItem("kt_tab"); if (!t) { t = Math.random().toString(36).slice(2, 10); sessionStorage.setItem("kt_tab", t); } } catch (e) { t = Math.random().toString(36).slice(2, 10); } return t; })();
+  const WD = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+  const liveWhen = (s) => { const d = new Date(s); return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " · " + WD[d.getDay()] + " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }); };
+  const liveLeft = (ms) => {
+    if (ms <= 0) return "sắp bắt đầu";
+    const m = Math.round(ms / 60000), d = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60), mm = m % 60;
+    return "còn " + (d ? d + " ngày " : "") + (hh ? hh + " giờ " : "") + (!d ? mm + " phút" : "");
+  };
+  const lessonChip = (s) => (s.g && s.l && LESSON[s.g + "-" + s.l] ? h("span", { class: "lv-chip" }, KT.lessonName(s.g + "-" + s.l, true)) : null);
+
+  // khối "Lớp học trực tuyến" trên trang chủ
+  function liveSlot() {
+    const box = h("div", {});
+    rpc("live_list").then((list) => {
+      if (!list || !list.length) return;
+      const now = Date.now() + clockSkew;
+      const live = list.filter((s) => s.status === "live");
+      const soon = list.filter((s) => s.status === "scheduled");
+      const done = list.filter((s) => s.status === "ended").reverse();
+      live.forEach((s) => box.append(h("div", { class: "lv-hero" },
+        h("div", { class: "lv-hero-l" },
+          h("span", { class: "lv-badge" }, h("i", {}), "ĐANG LIVE"),
+          h("h2", {}, s.title),
+          h("p", {}, [lessonChip(s), h("span", {}, "Bắt đầu " + liveWhen(s.started_at || s.starts_at))])),
+        h("button", { class: "btn lv-join", onclick: () => renderLive(s.id) }, "▶  Vào lớp ngay"))));
+      if (soon.length || done.length) {
+        box.append(h("div", { class: "section-t" }, "Lớp học trực tuyến"));
+        const row = h("div", { class: "lv-cards" });
+        soon.forEach((s) => {
+          const ms = new Date(s.starts_at).getTime() - now;
+          row.append(h("div", { class: "lv-card" + (ms < 3600e3 ? " near" : "") },
+            h("div", { class: "lv-date" }, h("b", {}, new Date(s.starts_at).getDate()), h("span", {}, "Th" + (new Date(s.starts_at).getMonth() + 1))),
+            h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, liveWhen(s.starts_at) + " · " + s.minutes + " phút"),
+              h("span", { class: "lv-left" }, liveLeft(ms))),
+            h("button", { class: "btn ghost sm", onclick: () => renderLive(s.id) }, "Xem")));
+        });
+        done.slice(0, 3).forEach((s) => row.append(h("div", { class: "lv-card past" },
+          h("div", { class: "lv-date" }, h("b", {}, new Date(s.starts_at).getDate()), h("span", {}, "Th" + (new Date(s.starts_at).getMonth() + 1))),
+          h("div", { class: "lv-card-tx" }, h("b", {}, s.title), h("span", {}, "Đã học · " + liveWhen(s.starts_at))),
+          h("button", { class: "btn ghost sm", onclick: () => renderLive(s.id) }, "Kết quả"))));
+        box.append(row);
+      }
+    }).catch(() => { });
+    return box;
+  }
+
+  // phòng học
+  function renderLive(id) {
+    stopTimers(); stopLive(); cur = null; window.scrollTo(0, 0); app.innerHTML = ""; setWho();
+    let st = null, lastChat = 0, mode = null, pollShown = null, picked = null, sending = false, tabNow = "chat", unread = 0;
+    const figs = {};
+    const titleEl = h("h1", {}, "Đang vào lớp…");
+    const statusEl = h("span", { class: "lv-badge off" }, "…");
+    const onlineEl = h("span", { class: "lv-online" });
+    const top = h("div", { class: "lv-top" },
+      h("button", { class: "btn ghost sm", onclick: () => { stopLive(); renderHome(); } }, "← Trang chủ"),
+      h("div", { class: "lv-top-t" }, titleEl, h("div", { class: "lv-meta" }, statusEl, onlineEl)));
+    const stage = h("div", { class: "lv-stage" });
+    const under = h("div", { class: "lv-under" });
+    // cột phải
+    const pollBox = h("div", { class: "lv-poll hidden" });
+    const chatList = h("div", { class: "lv-chat", "aria-live": "polite" });
+    const chatIn = h("input", { type: "text", maxlength: 300, placeholder: "Nhắn cho thầy và cả lớp…", "aria-label": "Tin nhắn" });
+    const sendBtn = h("button", { class: "btn sm", onclick: () => send() }, "Gửi");
+    chatIn.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+    const quick = h("div", { class: "lv-quick" }, ["👍 Em hiểu rồi", "🙋 Thầy giảng lại giúp em", "❓ Em có câu hỏi"].map((t) => h("button", { type: "button", onclick: () => send(t) }, t)));
+    const sendRow = h("div", { class: "lv-send" }, chatIn, sendBtn);
+    const closedNote = h("div", { class: "lv-closed" });
+    const chatPane = h("div", { class: "lv-pane" }, chatList, quick, sendRow, closedNote);
+    chatList.append(h("div", { class: "lv-empty" }, "Chưa có tin nhắn nào."));
+    const side = h("aside", { class: "lv-side" }, pollBox, h("div", { class: "lv-side-h" }, h("b", {}, "Trò chuyện"), h("span", { class: "sub" }, "Thầy và các bạn cùng lớp")), chatPane);
+    const room = h("section", { class: "wrap lv-room" }, top, h("div", { class: "lv-grid" }, h("div", {}, stage, under), side));
+    app.append(room);
+
+    async function send(text) {
+      const m = (text || chatIn.value).trim();
+      if (!m || sending) return;
+      sending = true;
+      try { const r = await rpc("live_chat_send", { p_session: id, p_msg: m }); if (r && r.error) KT.toast(r.error, "bad"); else { if (!text) chatIn.value = ""; tick(true); } }
+      catch (e) { fail(e); }
+      sending = false;
+    }
+    const addChat = (list, hidden) => {
+      (hidden || []).forEach((hid) => { const el = chatList.querySelector('[data-id="' + hid + '"]'); if (el) el.remove(); });
+      if (!list || !list.length) return;
+      const atBottom = chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 60;
+      list.forEach((c) => {
+        if (c.id <= lastChat) return; lastChat = c.id;
+        chatList.append(h("div", { class: "lv-msg" + (c.t ? " t" : "") + (c.me ? " me" : ""), "data-id": c.id },
+          h("div", { class: "lv-msg-h" }, c.t ? h("span", { class: "lv-tbadge" }, "Thầy") : h("b", {}, c.me ? "Em" : c.name),
+            h("time", {}, new Date(c.at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }))),
+          h("div", { class: "lv-msg-b" }, c.msg)));
+      });
+      while (chatList.children.length > 200) chatList.firstChild.remove();
+      if (atBottom) chatList.scrollTop = chatList.scrollHeight;
+      if (!chatList.querySelector(".lv-msg")) chatList.append(h("div", { class: "lv-empty" }, "Chưa có tin nhắn nào."));
+      else { const e = chatList.querySelector(".lv-empty"); if (e) e.remove(); }
+    };
+
+    // vùng video theo trạng thái
+    function drawStage() {
+      const s = st.session;
+      if (mode === s.status + (st.vid || "")) return;
+      mode = s.status + (st.vid || "");
+      stage.innerHTML = ""; under.innerHTML = ""; clearInterval(liveWm);
+      titleEl.textContent = s.title;
+      if (s.status === "live" && st.vid) {
+        const wm = h("div", { class: "lv-wm" }, st.me.name + " · " + st.me.code);
+        const move = () => {   // đặt tên học sinh ở vị trí ngẫu nhiên, luôn nằm trọn trong khung video
+          const box = wm.parentNode; if (!box) return;
+          const W = box.clientWidth, H = box.clientHeight, w = wm.offsetWidth, hh = wm.offsetHeight;
+          wm.style.left = Math.round(8 + Math.random() * Math.max(0, W - w - 16)) + "px"; wm.style.top = Math.round(8 + Math.random() * Math.max(0, H - hh - 50)) + "px";
+        };
+        setTimeout(move, 50); liveWm = setInterval(move, 14000);
+        stage.append(h("div", { class: "lv-video" },
+          h("iframe", { src: "https://www.youtube-nocookie.com/embed/" + st.vid + "?autoplay=1&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3",
+            title: s.title, allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: "", referrerpolicy: "strict-origin-when-cross-origin" }), wm));
+        under.append(h("div", { class: "lv-info" }, lessonChip(s), s.note ? h("p", {}, s.note) : null,
+          h("p", { class: "sub" }, "Không thấy hình? Bấm nút phát trên khung video. Khi thầy hỏi, khung “Câu hỏi nhanh” sẽ tự hiện để em trả lời.")));
+      } else if (s.status === "ended") {
+        const sm = st.summary || {};
+        stage.append(h("div", { class: "lv-wait ended" },
+          h("div", { class: "lv-wait-ic" }, "✓"), h("h2", {}, "Buổi học đã kết thúc"), h("p", {}, s.title),
+          h("div", { class: "lv-stats" },
+            h("div", {}, h("b", {}, sm.seconds ? Math.max(1, Math.round(sm.seconds / 60)) + "′" : "–"), h("span", {}, "Thời gian em tham gia")),
+            h("div", {}, h("b", {}, (sm.correct || 0) + "/" + (sm.polls || 0)), h("span", {}, "Câu hỏi nhanh trả lời đúng")),
+            h("div", {}, h("b", {}, String(sm.answered || 0)), h("span", {}, "Câu em đã trả lời"))),
+          h("button", { class: "btn acc", onclick: () => { stopLive(); renderHome(); } }, "Về trang chủ")));
+      } else {
+        const cd = h("div", { class: "lv-count" });
+        stage.append(h("div", { class: "lv-wait" },
+          h("span", { class: "lv-badge soon" }, "SẮP DIỄN RA"), h("h2", {}, s.title),
+          h("p", {}, "Bắt đầu lúc " + liveWhen(s.starts_at) + " · " + s.minutes + " phút"), lessonChip(s), cd,
+          h("p", { class: "sub" }, "Em cứ để trang này mở. Khi thầy bắt đầu, video sẽ tự hiện.")));
+        const upd = () => {
+          const ms = Math.max(0, new Date(s.starts_at).getTime() - (Date.now() + clockSkew));
+          const v = [Math.floor(ms / 864e5), Math.floor(ms / 36e5) % 24, Math.floor(ms / 6e4) % 60, Math.floor(ms / 1e3) % 60];
+          cd.innerHTML = ""; [["ngày", v[0]], ["giờ", v[1]], ["phút", v[2]], ["giây", v[3]]].forEach(([l, x], i) => { if (i || x) cd.append(h("div", {}, h("b", {}, String(x).padStart(2, "0")), h("span", {}, l))); });
+        };
+        upd(); liveWm = setInterval(upd, 1000);
+      }
+      statusEl.className = "lv-badge" + (s.status === "live" ? "" : s.status === "ended" ? " off" : " soon");
+      statusEl.innerHTML = ""; statusEl.append(s.status === "live" ? h("i", {}) : "", s.status === "live" ? "ĐANG LIVE" : s.status === "ended" ? "ĐÃ KẾT THÚC" : "SẮP DIỄN RA");
+    }
+
+    // câu hỏi nhanh
+    let ringT = null;
+    function drawPoll() {
+      const p = st.poll;
+      if (!p) { pollBox.classList.add("hidden"); pollShown = null; clearInterval(ringT); return; }
+      const sig = p.id + p.status + (p.my != null ? "m" + p.my : "") + (p.res ? JSON.stringify(p.res) : "");
+      if (sig === pollShown) return;
+      const fresh = !pollShown || !pollShown.startsWith(String(p.id));
+      pollShown = sig; pollBox.classList.remove("hidden"); pollBox.innerHTML = ""; clearInterval(ringT);
+      if (fresh) { pollBox.classList.remove("pop"); void pollBox.offsetWidth; pollBox.classList.add("pop"); picked = null;
+        if (window.innerWidth < 1000 && p.status === "open") setTimeout(() => pollBox.scrollIntoView({ behavior: "smooth", block: "center" }), 80); }
+      const letters = p.o.every((x, i) => String(x).trim() === "ABCDEFGH"[i]);
+      const head = h("div", { class: "lv-poll-h" }, h("span", {}, "⚡ Câu hỏi nhanh"));
+      if (p.status === "open") {
+        const R = 16, C = 2 * Math.PI * R, ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        ring.setAttribute("viewBox", "0 0 40 40"); ring.setAttribute("class", "lv-ring");
+        ring.innerHTML = '<circle cx="20" cy="20" r="16" class="bg"/><circle cx="20" cy="20" r="16" class="fg" stroke-dasharray="' + C + '"/><text x="20" y="24" text-anchor="middle"></text>';
+        const fg = ring.querySelector(".fg"), tx = ring.querySelector("text");
+        const end = Date.now() + p.left_ms;
+        const step = () => { const left = Math.max(0, end - Date.now()); tx.textContent = Math.ceil(left / 1000); fg.style.strokeDashoffset = String(C * (1 - left / (p.seconds * 1000))); ring.classList.toggle("low", left < 6000); };
+        step(); ringT = setInterval(step, 250);
+        head.append(ring);
+      } else head.append(h("span", { class: "lv-poll-st" }, p.status === "revealed" ? "Đã công bố đáp án" : "Hết giờ · chờ thầy công bố"));
+      pollBox.append(head);
+      if (p.q && !letters) pollBox.append(h("div", { class: "lv-poll-q", html: p.q }));
+      else if (letters) pollBox.append(h("div", { class: "lv-poll-q sub" }, "Thầy đang hỏi câu trên bảng. Em chọn đáp án:"));
+      const total = p.res ? p.res.n || 0 : 0;
+      const opts = h("div", { class: "lv-opts" + (letters ? " letters" : "") });
+      p.o.forEach((o, i) => {
+        const mine = p.my === i || (p.my == null && picked === i);
+        let cls = "lv-opt" + (mine ? " sel" : "");
+        if (p.status === "revealed" && p.key != null) cls += i === p.key ? " ok" : mine ? " bad" : "";
+        const b = h("button", { type: "button", class: cls, disabled: p.status !== "open" || p.my != null,
+          onclick: async () => {
+            picked = i; pollShown = null; drawPoll();
+            try { const r = await rpc("live_answer", { p_poll: p.id, p_ans: i }); if (r && r.error) { KT.toast(r.error, "bad"); picked = null; } else { p.my = i; pollShown = null; drawPoll(); } }
+            catch (e) { picked = null; fail(e); }
+          } }, h("span", { class: "L" }, "ABCDEFGH"[i]), letters ? null : h("span", { class: "lv-opt-t", html: o }));
+        if (p.status === "revealed" && p.res) {
+          const c = (p.res.counts || [])[i] || 0, pc = total ? Math.round(100 * c / total) : 0;
+          b.append(h("span", { class: "lv-bar" }, h("i", { style: "width:" + pc + "%" })), h("span", { class: "lv-pc" }, pc + "%"));
+        }
+        opts.append(b);
+      });
+      pollBox.append(opts);
+      if (p.status === "revealed" && p.graded) {
+        if (p.my == null) pollBox.append(h("div", { class: "lv-res" }, "Em chưa trả lời câu này. Đáp án đúng là " + "ABCDEFGH"[p.key] + "."));
+        else if (p.ok) { pollBox.append(h("div", { class: "lv-res ok" }, "🎉 Chính xác! Giỏi lắm.")); if (fresh || !pollBox.dataset.boom) { pollBox.dataset.boom = p.id; confetti(pollBox); } }
+        else pollBox.append(h("div", { class: "lv-res bad" }, "Chưa đúng rồi — đáp án là " + "ABCDEFGH"[p.key] + ". Nghe thầy giải thích nhé."));
+        if (total) pollBox.append(h("div", { class: "sub", style: "margin-top:6px" }, total + " bạn đã trả lời"));
+      } else if (p.my != null) pollBox.append(h("div", { class: "lv-res wait" }, "✓ Đã gửi đáp án " + "ABCDEFGH"[p.my] + ". Chờ thầy công bố…"));
+      const need = [...new Set(((p.q || "") + JSON.stringify(p.o)).match(/data-fig=\\?"([0-9a-f]+)/g) || [])].map((x) => x.replace(/.*"/, "")).filter((k) => !figs[k]);
+      if (need.length) api.rpc("get_figs", { p_ids: need }).then((f) => { Object.assign(figs, f); KT.typeset(pollBox, figs); }).catch(() => { });
+      KT.typeset(pollBox, figs);
+    }
+    function confetti(el) {
+      const box = h("div", { class: "lv-confetti", "aria-hidden": "true" });
+      const cols = ["#ffd23f", "#4f2bbd", "#1d9a5b", "#ff5d73", "#2fa4ff"];
+      for (let i = 0; i < 26; i++) box.append(h("i", { style: "left:" + (Math.random() * 100) + "%;background:" + cols[i % 5] + ";animation-delay:" + (Math.random() * 0.3) + "s;transform:rotate(" + (Math.random() * 360) + "deg)" }));
+      el.append(box); setTimeout(() => box.remove(), 1800);
+    }
+
+    let first = true;
+    async function tick(once) {
+      if (!once) clearTimeout(liveTimer);
+      try {
+        const r = await rpc("live_state", { p_session: id, p_tab: liveTab, p_after: lastChat });
+        if (r.error) { KT.toast(r.error, "bad"); stopLive(); renderHome(); return; }
+        st = r; clockSkew = new Date(r.server_now).getTime() - Date.now();
+        const live = r.session.status === "live";
+        if (r.session.status === "ended") r.poll = null;
+        quick.style.display = sendRow.style.display = live ? "" : "none"; closedNote.style.display = live ? "none" : "";
+        closedNote.textContent = r.session.status === "ended" ? "Buổi học đã kết thúc, phần trò chuyện đã đóng." : "Phần trò chuyện mở khi thầy bắt đầu buổi học.";
+        drawStage(); drawPoll(); addChat(r.chat, r.hidden);
+        onlineEl.textContent = r.session.status === "live" ? "👁 " + r.online + " đang xem" : r.session.classes.join(", ");
+        if (r.dup && first === false) KT.toast("Tài khoản của em đang mở lớp học ở một nơi khác. Thầy sẽ thấy cảnh báo này.", "bad");
+        first = false;
+      } catch (e) { if (/SESSION_EXPIRED/.test(e.message)) { stopLive(); return fail(e); } }
+      if (once) return;
+      const s = st && st.session && st.session.status;
+      const wait = s === "live" ? (document.visibilityState === "visible" ? 3000 : 8000) : s === "scheduled" ? 10000 : 0;
+      if (wait) liveTimer = setTimeout(tick, wait);
+    }
+    tick();
   }
 
   /* ---------------- khởi động ---------------- */
