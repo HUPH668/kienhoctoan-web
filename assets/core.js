@@ -77,13 +77,15 @@
   // cửa sổ xem video: danh sách bên cạnh, bấm để chuyển
   KT.videoModal = (list, heading) => {
     if (!list || !list.length) return;
-    let cur = 0;
+    let cur = 0, watchT = null;
     const stage = h("div", { class: "vstage" }), cap = h("div", { class: "vcap" }), side = h("div", { class: "vidlist" });
     const draw = () => {
       const v = list[cur]; stage.innerHTML = ""; stage.append(KT.videoFrame(v));
       cap.innerHTML = ""; cap.append(h("b", {}, v.title || "Video ôn tập"), h("span", {}, KT.lessonName(v.g + "-" + v.l, true)),
         h("a", { href: v.url, target: "_blank", rel: "noopener" }, v.p === "yt" ? "Mở trên YouTube ↗" : "Mở trên TikTok ↗"));
       side.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === cur));
+      clearTimeout(watchT); const shown = v;
+      watchT = setTimeout(() => { if (document.contains(stage) && list[cur] === shown && KT.onVideoWatched) KT.onVideoWatched(shown); }, 20000);
     };
     list.forEach((v, i) => side.append(h("button", { type: "button", onclick: () => { cur = i; draw(); } },
       h("span", { class: "vi" }, v.p === "yt" ? "▶" : "♪"), h("span", {}, h("b", {}, v.title || "Video " + (i + 1)), h("small", {}, KT.lessonName(v.g + "-" + v.l))))));

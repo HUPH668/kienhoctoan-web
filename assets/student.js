@@ -228,13 +228,14 @@
 
   /* ---------------- khu học sinh: 5 mục (Trang chủ, Học tập, Bài kiểm tra, Sổ câu sai, Thành tích) ---------------- */
   let view = "home", homeAt = 0, liveProm = null;
-  const NAV = [["home", "Trang chủ"], ["learn", "Học tập"], ["tests", "Bài kiểm tra"], ["book", "Sổ câu sai"], ["achieve", "Thành tích"]];
+  const NAV = [["home", "Trang chủ"], ["learn", "Học tập"], ["tests", "Bài kiểm tra"], ["book", "Sổ câu sai"], ["achieve", "Thành tích"], ["game", "Linh thú"]];
   const SV = {
     home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V20h13V9.8"/><path d="M10 20v-5.5h4V20"/>',
     learn: '<path d="M3.5 5.5h6A2.5 2.5 0 0 1 12 8v12a2 2 0 0 0-2-2H3.5z"/><path d="M20.5 5.5h-6A2.5 2.5 0 0 0 12 8v12a2 2 0 0 1 2-2h6.5z"/>',
     tests: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
     book: '<path d="M6 3.5h10.5A2.5 2.5 0 0 1 19 6v14.5H7.5A2.5 2.5 0 0 1 5 18V4.5a1 1 0 0 1 1-1z"/><path d="M5 18a2.5 2.5 0 0 1 2.5-2.5H19"/><path d="m9.5 7.5 4 4m0-4-4 4"/>',
     achieve: '<path d="M8 3.5h8V9a4 4 0 0 1-8 0z"/><path d="M16 5h3.5v1.5A3.5 3.5 0 0 1 16 10M8 5H4.5v1.5A3.5 3.5 0 0 0 8 10"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
+    game: '<path d="M12 20c-3.6 0-6.5-2-6.5-4.6 0-2.2 2.4-4.4 6.5-4.4s6.5 2.2 6.5 4.4C18.5 18 15.6 20 12 20z"/><circle cx="6" cy="8.5" r="2"/><circle cx="18" cy="8.5" r="2"/><circle cx="9.5" cy="5" r="2"/><circle cx="14.5" cy="5" r="2"/>',
     bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     chev: '<path d="m7 10 5 5 5-5"/>', out: '<path d="M14 4h4.5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16.5 5.5 12 10 7.5M5.5 12H15"/>',
     calc: '<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8 6h8v3H8z"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/>',
@@ -278,7 +279,7 @@
     try { history.replaceState(null, "", "#" + view); } catch (e) { }
     app.innerHTML = "";
     const w = h("section", { class: "wrap view v-" + view });
-    ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve })[view](w);
+    ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve, game: viewGame })[view](w);
     app.append(w);
     KT.typeset(app);
     if (!cached) setTimeout(celebrate, 500);
@@ -325,6 +326,7 @@
           h("div", {}, h("b", { "data-count": home.xp }, KT.num(home.xp)), h("span", {}, "KN")),
           h("div", {}, h("b", {}, String(home.streak || 0)), h("span", {}, "ngày liên tiếp")),
           h("div", {}, h("b", {}, rk.all_rank ? "#" + rk.all_rank : "–"), h("span", {}, "xếp hạng")))),
+      KT.game ? (() => { const el = h("div", { class: "pet" }); KT.game.pet(el, { rpc, go }); return el; })() : null,
       h("nav", { class: "ds-links", "aria-label": "Lối tắt" },
         link("tests", "Bài kiểm tra", openN, () => go("tests")),
         link("book", "Sổ câu sai", dueN, () => go("book")),
@@ -579,6 +581,14 @@
   }
 
   /* ----- Học tập ----- */
+  // xem video bài học đủ lâu: linh thú nhận kinh nghiệm
+  KT.onVideoWatched = (v) => { if (!sess) return; rpc("g_video", { p_p: v.p, p_vid: v.vid }).then((r) => { if (r && r.xp) KT.toast(r.nick + " nhận +" + r.xp + " KN vì em xem video bài học.", "ok"); }).catch(() => { }); };
+  // game Hành trình Linh Thú (game.js)
+  function viewGame(w) {
+    const box = h("div", { class: "gm-host" });
+    w.append(box);
+    if (KT.game) KT.game.mount(box, { rpc, fail }); else box.append(h("p", { class: "empty" }, "Không tải được game."));
+  }
   function viewLearn(w) {
     w.append(secHead("Tự luyện", "Chọn khối lớp rồi chọn dạng đề. Mỗi lần làm em nhận một đề khác nhau."));
     w.append(h("div", { class: "grades", role: "tablist" }, [6, 7, 8, 9, 10, 11, 12].map((x) => h("button", {
