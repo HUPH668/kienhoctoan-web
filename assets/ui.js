@@ -77,7 +77,11 @@
     el.style.setProperty("--rv-d", Math.min(batch++, 6) * 55 + "ms");
     el.classList.add("rv");
     io.observe(el);
+    // dự phòng: khối nằm sẵn trong màn hình thì hiện luôn; sau 2,5 giây mọi khối chưa hiện cũng hiện (không bao giờ để nội dung bị ẩn)
+    requestAnimationFrame(() => { const r = el.getBoundingClientRect(); if (r.top < innerHeight && r.bottom > 0) show(el); });
+    setTimeout(() => show(el), 2500);
   }
+  function show(el) { if (el.classList.contains("rv-in")) return; io.unobserve(el); el.classList.add("rv-in"); count(el); }
   function scan(node) {
     if (node.nodeType !== 1) return;
     const list = (node.matches(RV_SEL) ? [node] : []).concat([...node.querySelectorAll(RV_SEL)]);
