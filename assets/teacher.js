@@ -105,14 +105,14 @@
     const admin = !!(ov.me && ov.me.role === "admin");
     const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
     const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)],
-      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")],
+      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["gate", "Video đầu giờ"],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
     w.append(dashHead());
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, gate: tabGate, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
   }
 
   // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
@@ -438,6 +438,55 @@
 
   /* ---------------- VIDEO ÔN TẬP ---------------- */
   let vidGrade = null;
+  // video bắt buộc: học sinh lớp mình phải xem xong mới vào được trang
+  async function tabGate(el) {
+    let d;
+    try { d = await T("t_gate_get"); } catch (e) { fail(e); return; }
+    const v = d.video || {};
+    const url = h("input", { id: "gU", type: "url", value: v.url || "", placeholder: "https://www.youtube.com/watch?v=… hoặc link TikTok đầy đủ" });
+    const title = h("input", { id: "gT", maxlength: 150, value: v.title || "", placeholder: "VD: Lời nhắn của thầy trước kì thi" });
+    const mm = h("input", { id: "gM", type: "number", min: 0, max: 60, value: Math.floor((v.secs || 60) / 60) });
+    const ss = h("input", { id: "gS", type: "number", min: 0, max: 59, value: (v.secs || 60) % 60 });
+    const mode = h("select", { id: "gMo" }, h("option", { value: "once", selected: v.mode !== "login" }, "Xem một lần (cho tới khi thầy đổi video)"),
+      h("option", { value: "login", selected: v.mode === "login" }, "Xem lại mỗi lần đăng nhập"));
+    const on = h("input", { type: "checkbox", id: "gOn", checked: d.video ? v.active : true });
+    const prev = h("div", { class: "vprev" });
+    const parse = (u) => { let m = String(u).match(/tiktok\.com\/(?:@[^/?#]+\/video|embed(?:\/v2)?|player\/v1|v)\/(\d{8,25})/); if (m) return { p: "tt", vid: m[1] };
+      m = String(u).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/); return m ? { p: "yt", vid: m[1] } : null; };
+    const drawPrev = () => { prev.innerHTML = ""; const u = url.value.trim(); if (!u) return; const x = parse(u);
+      if (!x) { prev.append(h("div", { class: "note bad" }, "Chưa đọc được link. Dán link đầy đủ của video YouTube hoặc TikTok.")); return; }
+      prev.append(h("p", { class: "sub" }, "Xem trước:"), KT.videoFrame(x)); };
+    url.addEventListener("change", drawPrev); url.addEventListener("paste", () => setTimeout(drawPrev, 50));
+    const save = async (reset) => {
+      if (!parse(url.value.trim())) { drawPrev(); return; }
+      const secs = Math.max(5, (+mm.value || 0) * 60 + (+ss.value || 0));
+      try {
+        const x = await T("t_gate_set", { p_url: url.value.trim(), p_title: title.value.trim(), p_secs: secs, p_mode: mode.value, p_active: on.checked, p_reset: !!reset });
+        if (x.error) { KT.toast(x.error, "bad"); return; }
+        KT.toast(reset ? "Đã yêu cầu tất cả học sinh xem lại" : on.checked ? "Đã lưu. Học sinh lớp thầy sẽ phải xem video khi đăng nhập." : "Đã lưu và tắt video bắt buộc", "ok");
+        el.innerHTML = ""; tabGate(el);
+      } catch (e) { fail(e); }
+    };
+    el.append(h("div", { class: "panel" }, h("h3", {}, "Video bắt buộc khi học sinh đăng nhập"),
+      h("p", { class: "sub" }, "Học sinh các lớp của thầy phải bấm mở video và xem đủ thời gian tối thiểu thì mới dùng được trang web. Thời gian do máy chủ tính, học sinh không bỏ qua được."),
+      h("div", { class: "form" },
+        h("div", { class: "full" }, h("label", { for: "gU" }, "Link video"), url),
+        h("div", { class: "full" }, h("label", { for: "gT" }, "Tiêu đề (học sinh sẽ thấy)"), title),
+        h("div", {}, h("label", { for: "gM" }, "Xem tối thiểu (phút)"), mm), h("div", {}, h("label", { for: "gS" }, "và (giây)"), ss),
+        h("div", { class: "full" }, h("label", { for: "gMo" }, "Khi nào phải xem"), mode),
+        h("div", { class: "full" }, h("label", { class: "chk" }, on, " Bật video bắt buộc")),
+        h("div", { class: "full" }, h("button", { class: "btn", onclick: () => save(false) }, "Lưu"),
+          d.video ? h("button", { class: "btn ghost", style: "margin-left:8px", onclick: () => KT.confirm("Yêu cầu xem lại?", "Mọi học sinh lớp thầy, kể cả em đã xem, sẽ phải xem lại video này ở lần vào web tiếp theo.", "Yêu cầu xem lại", () => save(true)) }, "Bắt tất cả xem lại") : null)),
+      prev));
+    drawPrev();
+    if (d.video) {
+      const pend = d.pending || [];
+      el.append(h("div", { class: "panel" }, h("h3", {}, "Tình hình xem video"),
+        h("p", { class: "sub" }, (v.active ? "Đang bật. " : "Đang tắt. ") + "Đã xem: " + (d.done || 0) + "/" + (d.total || 0) + " học sinh" + (v.mode === "login" ? " (trong 24 giờ qua)." : ".")),
+        pend.length ? h("details", {}, h("summary", {}, "Chưa xem (" + pend.length + " em)"),
+          h("ul", { class: "gate-list" }, pend.slice(0, 300).map((p) => h("li", {}, p.name + " (" + p.code + (p.class ? ", lớp " + p.class : "") + ")")))) : h("p", { class: "sub" }, "Tất cả học sinh đã xem.")));
+    }
+  }
   async function tabVideos(el) {
     const c0 = (ov.classes || [])[0];
     if (vidGrade == null) vidGrade = c0 && CUR[c0.grade] ? c0.grade : (CUR[10] ? 10 : KT.GRADES[0]);

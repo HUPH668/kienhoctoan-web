@@ -1910,3 +1910,27 @@ body.has-nav .top .logo .t{display:none}
   .bnav a .si{width:40px}
   .bnav .nbdg{right:calc(50% - 24px)}
 }
+
+/* ===== video bắt buộc sau khi đăng nhập ===== */
+body.gate-on{overflow:hidden}
+.gate{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:16px;overflow-y:auto;
+  background:radial-gradient(80% 60% at 50% 0%,rgba(122,92,232,.55),transparent 70%),rgba(16,12,40,.86);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:gatein .3s ease-out}
+@keyframes gatein{from{opacity:0}}
+.gate-card{width:min(640px,100%);background:var(--surface);color:var(--ink);border-radius:28px;padding:clamp(18px,4vw,30px);box-shadow:0 40px 80px -30px rgba(0,0,0,.7);text-align:center;animation:gmpop .35s ease-out}
+.gate-from{margin:0;font-size:.85rem;font-weight:700;color:var(--brand)}
+.gate-card h2{margin:6px 0 4px;font-size:clamp(1.4rem,4vw,1.9rem);font-weight:850;letter-spacing:-.01em;line-height:1.2}
+.gate-sub{margin:0 auto 14px;color:var(--ink-2);max-width:46ch;line-height:1.5}
+.gate-stage:not(:empty){margin:0 auto 14px;border-radius:18px;overflow:hidden;background:#000}
+.gate-stage .vframe{margin:0 auto}
+.gate-acts{display:flex;justify-content:center}
+.gate-open{font-size:1.05rem;padding:14px 26px;text-decoration:none}
+.gate-prog{display:flex;align-items:center;gap:12px;margin:18px 0 6px}
+.gate-bar{flex:1;height:10px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.gate-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#7a5ce8,#ffd23f);transition:width 1s linear}
+.gate-clock{font-variant-numeric:tabular-nums;font-size:1.05rem;min-width:52px;text-align:right}
+.gate-st{margin:4px 0 14px;font-size:.88rem;color:var(--ink-3)}
+.gate-card>.btn.acc{min-width:220px}
+.gate-card>.btn:disabled{opacity:.45;cursor:not-allowed}
+.gate-out{display:block;margin:14px auto 0;background:none;border:0;color:var(--ink-3);font:inherit;font-size:.85rem;text-decoration:underline;cursor:pointer}
+.gate-list{columns:2;font-size:.88rem;line-height:1.6;padding-left:1.1rem}
+@media (max-width:620px){.gate-list{columns:1}}

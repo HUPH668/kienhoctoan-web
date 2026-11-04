@@ -24,7 +24,7 @@
   }
   function logout(expired) {
     if (sess) api.rpc("student_logout", { p_token: sess.token }).catch(() => { });
-    sess = null; store.del("kt_stu"); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
+    sess = null; gateOk = false; store.del("kt_stu"); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
   function stopTimers() { stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
@@ -276,6 +276,7 @@
       } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap view empty-state" }, h("h2", {}, "Không tải được dữ liệu"), h("p", {}, "Kiểm tra kết nối mạng rồi thử lại."), h("button", { class: "btn", onclick: () => renderHome(view) }, "Thử lại"))); return; }
     }
     setWho(); drawNav();
+    if (!cached && !gateOk) rpc("gate_get").then((g) => { if (g && g.need) showGate(g); else gateOk = true; }).catch(() => { });
     try { history.replaceState(null, "", "#" + view); } catch (e) { }
     app.innerHTML = "";
     const w = h("section", { class: "wrap view v-" + view });
@@ -581,6 +582,58 @@
   }
 
   /* ----- Học tập ----- */
+  // video bắt buộc của thầy cô: phải bấm xem và xem đủ thời gian mới dùng được trang
+  let gateOk = false, gateEl = null;
+  function showGate(g) {
+    if (gateEl) gateEl.remove();
+    let left = g.left, timer = null, opened = !!g.opened;
+    const mmss = (x) => Math.floor(x / 60) + ":" + String(x % 60).padStart(2, "0");
+    const clock = h("b", { class: "gate-clock" }, mmss(left));
+    const bar = h("i", { style: "width:" + Math.round((1 - left / Math.max(1, g.secs)) * 100) + "%" });
+    const stage = h("div", { class: "gate-stage" });
+    const doneBtn = h("button", { class: "btn acc", type: "button", disabled: true, onclick: async () => {
+      const r = await rpc("gate_done").catch((e) => { fail(e); return null; });
+      if (!r) return;
+      if (r.ok) { gateOk = true; close(); KT.toast("Cảm ơn em đã xem video. Chúc em học tốt!", "ok"); return; }
+      left = r.left || 1; tick(); KT.toast("Em xem thêm một chút nữa nhé.", "bad");
+    } }, "Em đã xem xong");
+    const status = h("p", { class: "gate-st", "aria-live": "polite" });
+    const tick = () => {
+      clearInterval(timer);
+      const upd = () => {
+        clock.textContent = mmss(left); bar.style.width = Math.round((1 - left / Math.max(1, g.secs)) * 100) + "%";
+        doneBtn.disabled = left > 0;
+        status.textContent = left > 0 ? "Xem video thêm " + mmss(left) + " nữa thì nút bên dưới sẽ mở." : "Em đã xem đủ thời gian. Bấm “Em đã xem xong” để vào học.";
+        if (left <= 0) clearInterval(timer);
+      };
+      upd(); timer = setInterval(() => { if (!document.hidden || opened) left = Math.max(0, left - 1); upd(); }, 1000);
+    };
+    const showVideo = () => { stage.innerHTML = ""; stage.append(KT.videoFrame({ p: g.p, vid: g.vid })); };
+    const openBtn = h("a", { class: "btn gate-open", href: g.url, target: "_blank", rel: "noopener", onclick: async () => {
+      const r = await rpc("gate_open").catch(() => null);
+      opened = true; if (r && r.left != null) left = r.left;
+      showVideo(); openBtn.classList.add("ghost"); openBtn.textContent = "Mở lại video";
+      tick();
+    } }, opened ? "Mở lại video" : "▶ Bấm để xem video");
+    if (opened) { openBtn.classList.add("ghost"); showVideo(); }
+    gateEl = h("div", { class: "gate", role: "dialog", "aria-modal": "true", "aria-labelledby": "gateT" },
+      h("div", { class: "gate-card" },
+        h("p", { class: "gate-from" }, (g.teacher || "Thầy cô") + " gửi em một video"),
+        h("h2", { id: "gateT" }, g.title || "Video quan trọng"),
+        h("p", { class: "gate-sub" }, "Em bấm vào nút bên dưới để xem video. Xem đủ " + mmss(g.secs) + " thì em mới vào học được."),
+        stage,
+        h("div", { class: "gate-acts" }, openBtn),
+        h("div", { class: "gate-prog" }, h("div", { class: "gate-bar" }, bar), clock),
+        status, doneBtn,
+        h("button", { class: "gate-out", type: "button", onclick: () => { close(); logout(); } }, "Đăng xuất")));
+    document.body.append(gateEl); document.body.classList.add("gate-on");
+    const close = () => { clearInterval(timer); if (gateEl) gateEl.remove(); gateEl = null; document.body.classList.remove("gate-on"); };
+    // chặn bấm phím Tab ra khỏi hộp
+    gateEl.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; const f = [...gateEl.querySelectorAll("a,button:not([disabled]),iframe")]; if (!f.length) return;
+      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); } });
+    setTimeout(() => { try { openBtn.focus(); } catch (e) { } }, 50);
+    if (opened) tick(); else { status.textContent = "Nút “Em đã xem xong” sẽ mở sau khi em xem đủ thời gian."; }
+  }
   // xem video bài học đủ lâu: linh thú nhận kinh nghiệm
   KT.onVideoWatched = (v) => { if (!sess) return; rpc("g_video", { p_p: v.p, p_vid: v.vid }).then((r) => { if (r && r.xp) KT.toast(r.nick + " nhận +" + r.xp + " KN vì em xem video bài học.", "ok"); }).catch(() => { }); };
   // game Hành trình Linh Thú (game.js)
