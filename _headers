@@ -1,0 +1,9 @@
+# Cloudflare Pages: luôn kiểm tra bản mới, học sinh không cần nhấn Ctrl+F5
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+/giaovien
+  Cache-Control: public, max-age=0, must-revalidate
+/assets/*
+  Cache-Control: public, max-age=0, must-revalidate
