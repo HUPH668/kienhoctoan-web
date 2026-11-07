@@ -1,4 +1,4 @@
-/* Hình vẽ 20 linh thú (SVG tự vẽ, không dùng hình có bản quyền). KT.monArt(id, {stage, flip, size}) → chuỗi SVG */
+/* Hình vẽ các linh thú (SVG tự vẽ, không dùng hình có bản quyền). KT.monArt(id, {stage, flip, size}) → chuỗi SVG */
 (() => {
   "use strict";
   const KT = window.KT || (window.KT = {});
@@ -24,6 +24,27 @@
     else if (o.wide) g += `<path d="M${cx - 12 * s} ${cy + 8 * s} Q${cx} ${cy + 17 * s} ${cx + 12 * s} ${cy + 8 * s}" fill="#5b1a2e" stroke="${d}" stroke-width="2" stroke-linejoin="round"/><path d="M${cx - 5 * s} ${cy + 12.4 * s} Q${cx} ${cy + 15 * s} ${cx + 5 * s} ${cy + 12.4 * s}" fill="#ff7a96"/>`;
     else g += `<path d="M${cx - 4.5 * s} ${cy + 7 * s} q${2.25 * s} ${3 * s} ${4.5 * s} 0 q${2.25 * s} ${3 * s} ${4.5 * s} 0" fill="none" stroke="${d}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
     return g;
+  }
+  // khuôn mặt "ngầu": mắt xếch có ánh sáng, mày nhíu, miệng cười để lộ hàm răng nhọn
+  function fierce(cx, cy, s, p, o = {}) {
+    const d = "#1d1530", dx = 11 * s;
+    let g = "";
+    [-1, 1].forEach((k) => {
+      const x = cx + k * dx;
+      g += `<g class="mon-eye"><path d="M${x - 5 * s} ${cy - (k < 0 ? 2.2 : -0.6) * s} Q${x} ${cy - 5.5 * s} ${x + 5 * s} ${cy - (k < 0 ? -0.6 : 2.2) * s} Q${x + 4.6 * s} ${cy + 5.6 * s} ${x} ${cy + 5.4 * s} Q${x - 4.6 * s} ${cy + 5.6 * s} ${x - 5 * s} ${cy - (k < 0 ? 2.2 : -0.6) * s}Z" fill="#fffbe6" stroke="${d}" stroke-width="1.6"/>`
+        + `<circle cx="${x + k * -1 * s}" cy="${cy + 1 * s}" r="${2.9 * s}" fill="${d}"/><circle cx="${x + (1 - k) * 0.6 * s}" cy="${cy - 0.4 * s}" r="${1.1 * s}" fill="#fff"/></g>`
+        + `<path class="mon-eye-c" d="M${x - 5 * s} ${cy + 1 * s} Q${x} ${cy - 3 * s} ${x + 5 * s} ${cy + 1 * s}" fill="none" stroke="${d}" stroke-width="${2.4 * s}" stroke-linecap="round"/>`
+        + `<path d="M${cx + k * 17 * s} ${cy - 10 * s} L${cx + k * 4 * s} ${cy - 5 * s}" stroke="${d}" stroke-width="${3.4 * s}" stroke-linecap="round"/>`;
+      if (!o.noCheek) g += `<ellipse cx="${cx + k * (dx + 6 * s)}" cy="${cy + 8 * s}" rx="${3.6 * s}" ry="${2.2 * s}" fill="#ff7aa2" opacity=".5"/>`;
+    });
+    if (o.noMouth) return g;
+    const my = cy + (o.mouthY || 8) * s, w = (o.big ? 15 : 12) * s, dp = (o.big ? 13 : 10) * s, n = o.big ? 7 : 5, tw = (2 * w) / n;
+    g += `<path d="M${cx - w} ${my} Q${cx} ${my + dp * 1.6} ${cx + w} ${my}Z" fill="#5b1a2e" stroke="${d}" stroke-width="2" stroke-linejoin="round"/>`
+      + `<path d="M${cx - w * 0.45} ${my + dp * 0.62} Q${cx} ${my + dp * 0.9} ${cx + w * 0.45} ${my + dp * 0.62} Q${cx} ${my + dp * 0.35} ${cx - w * 0.45} ${my + dp * 0.62}Z" fill="#ff7a96"/>`;
+    let t = "";
+    for (let i = 0; i < n; i++) t += `M${(cx - w + i * tw).toFixed(1)} ${my} l${(tw / 2).toFixed(1)} ${(3.8 * s).toFixed(1)} l${(tw / 2).toFixed(1)} ${(-3.8 * s).toFixed(1)}Z `;
+    t += `M${(cx - w * 0.62).toFixed(1)} ${(my + dp * 0.72).toFixed(1)} l${(1.8 * s).toFixed(1)} ${(-3.2 * s).toFixed(1)} l${(1.8 * s).toFixed(1)} ${(3.4 * s).toFixed(1)}Z M${(cx + w * 0.62 - 3.6 * s).toFixed(1)} ${(my + dp * 0.74).toFixed(1)} l${(1.8 * s).toFixed(1)} ${(-3.4 * s).toFixed(1)} l${(1.8 * s).toFixed(1)} ${(3.2 * s).toFixed(1)}Z`;
+    return g + `<path d="${t}" fill="#fff" stroke="${d}" stroke-width="1" stroke-linejoin="round"/>`;
   }
   const emb = (x, y, t, col, size) => `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central" font-family="'Be Vietnam Pro',system-ui,sans-serif" font-weight="800" font-size="${size || (t.length > 2 ? 11 : t.length > 1 ? 13 : 16)}" fill="${col}">${t}</text>`;
 
@@ -179,6 +200,78 @@
         + `<path d="M40 40 A28 28 0 0 1 64 34" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".6"/>`
         + emb(60, 82, e, p.d, 13) + face(60, 58, 0.95);
     },
+    // ---- nhóm "ngầu": mắt xếch, mày nhíu, răng nanh ----
+    spiky(p, e) {
+      let sp = "";
+      for (let i = 0; i < 9; i++) {
+        const a = Math.PI * (1.08 + i * 0.105), r0 = 28, r1 = 44, w = 0.13;
+        const P = (ang, r) => (60 + r * Math.cos(ang)).toFixed(1) + " " + (72 + r * Math.sin(ang)).toFixed(1);
+        sp += `M${P(a - w, r0)} L${P(a, r1 - (i % 2) * 6)} L${P(a + w, r0)}Z `;
+      }
+      return `<path class="mon-tail" d="M86 92 C98 98 106 94 108 86 L100 88 L104 80 L94 86" fill="${p.d}" stroke="${p.d}" stroke-width="2" stroke-linejoin="round"/>`
+        + `<path d="${sp}" fill="${p.d}" stroke="${p.d}" stroke-width="2.2" stroke-linejoin="round"/>`
+        + `<path d="${sp}" fill="${p.l}" opacity=".35" transform="translate(60 72) scale(.82) translate(-60 -72)"/>`
+        + `<ellipse cx="60" cy="74" rx="31" ry="29" fill="${p.c}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<ellipse cx="60" cy="90" rx="17" ry="10" fill="${p.l}"/>` + emb(60, 91, e, p.d, 12)
+        + `<path d="M38 100 l-3 6 h12 l-2 -6 M74 100 l-2 6 h12 l-3 -6" fill="${p.d}" stroke="${p.d}" stroke-width="2" stroke-linejoin="round"/>`
+        + fierce(60, 66, 1, p);
+    },
+    beetle(p, e) {
+      const leg = (x, y, dx) => `<path d="M${x} ${y} l${dx} 4 l${dx / 2} 8" fill="none" stroke="${p.d}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<g class="mon-arm">${leg(30, 78, -10)}${leg(32, 90, -9)}${leg(90, 78, 10)}${leg(88, 90, 9)}</g>`
+        + `<ellipse cx="60" cy="82" rx="34" ry="24" fill="${p.d}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<path d="M28 80 C30 64 46 58 60 60 V104 C42 104 28 96 28 80Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + `<path d="M92 80 C90 64 74 58 60 60 V104 C78 104 92 96 92 80Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + `<path d="M36 74 L46 68 L50 80 L40 86Z M84 74 L74 68 L70 80 L80 86Z" fill="${p.l}" opacity=".7"/>`
+        + emb(76, 93, e, p.d, 12)
+        + `<path d="M48 48 C44 32 52 16 70 6 C68 14 70 20 82 18 C76 26 72 36 72 48Z" fill="${p.d}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + `<path d="M54 44 C52 32 58 22 66 16" fill="none" stroke="${p.l}" stroke-width="3" stroke-linecap="round" opacity=".75"/>`
+        + `<ellipse cx="60" cy="58" rx="22" ry="17" fill="${p.c}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<path d="M44 50 Q60 42 76 50" fill="none" stroke="${p.l}" stroke-width="3" stroke-linecap="round" opacity=".8"/>`
+        + fierce(60, 58, 0.78, p, { noCheek: true });
+    },
+    shark(p, e) {
+      return `<path class="mon-tail" d="M86 86 C98 84 104 78 112 66 C110 80 112 90 116 100 C106 94 98 94 86 96Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + `<path d="M54 42 C58 26 68 18 78 16 C74 26 74 36 76 46Z" fill="${p.d}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + `<path d="M60 38 C86 38 96 58 94 76 C92 96 78 104 60 104 C42 104 28 96 26 76 C24 58 34 38 60 38Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<path d="M30 80 C40 94 52 98 60 98 C68 98 80 94 90 80 C88 96 76 104 60 104 C44 104 32 96 30 80Z" fill="#f4f7ff"/>`
+        + `<path d="M84 60 q-3 5 0 10 M89 62 q-3 4 0 8" fill="none" stroke="${p.d}" stroke-width="2" stroke-linecap="round"/>`
+        + `<path class="mon-arm" d="M28 78 C16 80 12 90 14 94 C20 92 26 88 32 86Z M92 78 C104 80 108 90 106 94 C100 92 94 88 88 86Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.4" stroke-linejoin="round"/>`
+        + emb(60, 92, e, p.d, 11)
+        + fierce(58, 60, 1.05, p, { big: true });
+    },
+    wolf(p, e) {
+      let mane = "";
+      for (let i = 0; i < 11; i++) {
+        const a = Math.PI * (0.78 + i * 0.145), P = (r, da) => (60 + r * Math.cos(a + da)).toFixed(1) + " " + (66 + r * Math.sin(a + da)).toFixed(1);
+        mane += `M${P(26, -0.16)} L${P(40, 0)} L${P(26, 0.16)}Z `;
+      }
+      return `<path class="mon-tail" d="M84 94 C104 100 114 84 110 66 L104 74 L102 62 L96 74 C94 80 90 86 82 88Z" fill="${p.d}" stroke="${p.d}" stroke-width="2.2" stroke-linejoin="round"/>`
+        + `<path d="M34 48 L30 14 L54 36Z M86 48 L90 14 L66 36Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.6" stroke-linejoin="round"/><path d="M37 40 L35 24 L47 36Z M83 40 L85 24 L73 36Z" fill="${p.l}"/>`
+        + `<path d="${mane}" fill="${p.d}" stroke="${p.d}" stroke-width="2" stroke-linejoin="round"/>`
+        + `<ellipse cx="60" cy="72" rx="31" ry="30" fill="${p.c}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<path d="M56 34 a8 8 0 1 0 8 10 a6 6 0 1 1 -8 -10Z" fill="${p.l}" stroke="${p.d}" stroke-width="1.4"/>`
+        + `<ellipse cx="60" cy="78" rx="16" ry="11" fill="${p.l}"/><ellipse cx="60" cy="72" rx="4" ry="3" fill="#1d1530"/>`
+        + `<ellipse cx="46" cy="102" rx="8" ry="5" fill="${p.d}"/><ellipse cx="74" cy="102" rx="8" ry="5" fill="${p.d}"/>`
+        + emb(60, 93, e, "#fff", 10)
+        + fierce(60, 60, 0.95, p, { mouthY: 16, noCheek: true });
+    },
+    mimic(p, e) {
+      let tb = "", tt = "";
+      for (let i = 0; i < 6; i++) { const x = 32 + i * 10; tb += `M${x} 66 l5 -6 l5 6Z `; tt += `M${x} 46 l5 6 l5 -6Z `; }
+      return `<rect x="34" y="100" width="10" height="9" rx="3" fill="${p.d}"/><rect x="76" y="100" width="10" height="9" rx="3" fill="${p.d}"/>`
+        + `<path d="M28 46 H92 V70 H28Z" fill="#5b1a2e"/><path d="M48 66 C50 56 70 56 72 66Z" fill="#ff7a96"/>`
+        + `<rect x="26" y="64" width="68" height="38" rx="6" fill="${p.c}" stroke="${p.d}" stroke-width="2.6"/>`
+        + `<path d="M26 76 H94 M26 90 H94" stroke="${p.d}" stroke-width="2" opacity=".5"/>`
+        + `<path d="M40 64 V102 M80 64 V102" stroke="#e7b53c" stroke-width="5"/>`
+        + `<path d="${tb}" fill="#fff" stroke="${p.d}" stroke-width="1.2" stroke-linejoin="round"/>`
+        + `<rect x="50" y="74" width="20" height="18" rx="4" fill="#ffd23f" stroke="#a8650a" stroke-width="1.8"/>` + emb(60, 83.5, e, "#a8650a", 13)
+        + `<g class="mon-lid"><path d="M24 48 C24 28 40 20 60 20 C80 20 96 28 96 48Z" fill="${p.c}" stroke="${p.d}" stroke-width="2.6" stroke-linejoin="round"/>`
+        + `<path d="M40 22 V48 M80 22 V48" stroke="#e7b53c" stroke-width="5"/>`
+        + `<path d="${tt}" fill="#fff" stroke="${p.d}" stroke-width="1.2" stroke-linejoin="round"/>`
+        + fierce(60, 36, 0.8, p, { noMouth: true, noCheek: true }) + `</g>`
+        + `<path d="M92 66 l4 -4 M95 74 h6 M14 60 l4 3" stroke="${p.l}" stroke-width="2.4" stroke-linecap="round"/>`;
+    },
   };
 
   // phụ kiện riêng cho các con có cùng dáng
@@ -211,7 +304,7 @@
     return "";
   }
 
-  const CP = { turtle: [-36, 40], snake: [20, 6], fish: [-14, 14], golem: [-6, 14], dice: [-4, 16], frog: [0, 18], bug: [0, 14] };
+  const CP = { beetle: [-22, 26], mimic: [0, 2], turtle: [-36, 40], snake: [20, 6], fish: [-14, 14], golem: [-6, 14], dice: [-4, 16], frog: [0, 18], bug: [0, 14] };
   KT.monArt = (id, opt = {}) => {
     const s = D.species.find((x) => x.id === id) || D.species[0];
     const p = pal(s.type), st = opt.stage || 1, n = ++uid;

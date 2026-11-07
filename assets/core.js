@@ -132,6 +132,7 @@
   KT.groupRange = (items) => { const r = {}; items.forEach((it, i) => { if (!it.grp) return; (r[it.grp] = r[it.grp] || [i + 1, i + 1]); r[it.grp][1] = i + 1; }); return r; };
   KT.bpScope = (bp) => {
     if (bp.exam) return (bp.parts || []).map((x) => KT.dgnlSec(x.k).name + " " + x.n + " câu").join(" · ");
+    if (bp.paper) return "Đề gốc, giữ nguyên thứ tự câu";
     if (bp.tags && bp.tags.length) return "ID " + bp.tags.slice(0, 6).join(", ") + (bp.tags.length > 6 ? "…" : "");
     const ls = bp.lessons || [];
     if (ls.length === 1) return KT.lessonName(ls[0], true);

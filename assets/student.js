@@ -673,6 +673,71 @@
       class: "grade" + (x === grade ? " on" : ""), disabled: !CUR[x], role: "tab", "aria-selected": String(x === grade),
       onclick: () => { grade = x; store.set("kt_grade", x); renderHome("learn", { cache: true }); } }, "Lớp " + x, !CUR[x] ? h("small", {}, "sắp có") : null))));
     w.append(practiceCards(grade));
+    w.append(paperSection(grade));
+  }
+
+  /* ----- Luyện theo đề có sẵn (đề thật của các trường, sở: đúng câu, đúng thứ tự như đề gốc) ----- */
+  const PAPER_KIND = { TNTHPT: "Thi thử TN THPT", GHK1: "Giữa kì I", CHK1: "Cuối kì I", GHK2: "Giữa kì II", CHK2: "Cuối kì II", BAI: "Theo bài", KHAC: "Đề khác" };
+  const PAPER_ORDER = ["TNTHPT", "GHK1", "CHK1", "GHK2", "CHK2", "BAI", "KHAC"];
+  const paperCache = {};
+  let pKind = "all", pQuery = "", pShow = 9;
+  const foldVi = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase();
+  function paperSection(g) {
+    const box = h("section", { class: "papers", "aria-labelledby": "papH" });
+    const chips = h("div", { class: "chips", role: "tablist", "aria-label": "Loại đề" });
+    const q = h("input", { type: "search", class: "search", placeholder: "Tìm theo tên trường, sở, bài", value: pQuery, "aria-label": "Tìm đề" });
+    const bar = h("div", { class: "toolbar" }, chips, q);
+    const list = h("div", { class: "pp-list", "aria-live": "polite" });
+    box.append(secHead("Luyện theo đề có sẵn", "Đề thật của các trường và sở, giữ nguyên câu hỏi và thứ tự như đề gốc. Em chọn đề nào thì làm đề đó, làm lại bao nhiêu lần cũng được."), bar, list);
+    const draw = () => {
+      const all = paperCache[g] || [];
+      chips.innerHTML = ""; list.innerHTML = "";
+      if (!all.length) {
+        bar.hidden = true;
+        list.append(h("div", { class: "empty-state" }, h("h3", {}, "Chưa có đề Toán " + g), h("p", {}, "Thầy cô đang cập nhật thêm đề. Trong lúc chờ, em làm các đề luyện tập ở phía trên nhé.")));
+        return;
+      }
+      bar.hidden = false;
+      const kinds = PAPER_ORDER.filter((k) => all.some((p) => p.kind === k));
+      if (pKind !== "all" && !kinds.includes(pKind)) pKind = "all";
+      [["all", "Tất cả", all.length]].concat(kinds.map((k) => [k, PAPER_KIND[k], all.filter((p) => p.kind === k).length])).forEach(([k, l, n]) =>
+        chips.append(h("button", { class: pKind === k ? "on" : "", role: "tab", "aria-selected": String(pKind === k), onclick: () => { pKind = k; pShow = 9; draw(); } }, l, h("b", {}, String(n)))));
+      const s = foldVi(pQuery.trim());
+      const rows = all.filter((p) => (pKind === "all" || p.kind === pKind) && (!s || foldVi(p.title).includes(s)))
+        .sort((a, b) => (b.doing ? 1 : 0) - (a.doing ? 1 : 0) || PAPER_ORDER.indexOf(a.kind) - PAPER_ORDER.indexOf(b.kind) || a.title.localeCompare(b.title, "vi"));
+      if (!rows.length) { list.append(h("div", { class: "empty-state" }, h("h3", {}, "Không có đề nào khớp"), h("p", {}, "Thử chọn loại đề khác hoặc xoá từ khoá tìm kiếm."))); return; }
+      list.append(h("div", { class: "tgrid" }, rows.slice(0, pShow).map(paperCard)));
+      if (rows.length > pShow) list.append(h("div", { class: "pp-more" }, h("button", { class: "btn ghost", onclick: () => { pShow += 12; draw(); } }, "Xem thêm " + Math.min(12, rows.length - pShow) + " đề (còn " + (rows.length - pShow) + ")")));
+      if (KT.ui) KT.ui.reveal(list);
+    };
+    q.addEventListener("input", () => { pQuery = q.value; pShow = 9; draw(); });
+    if (paperCache[g]) draw(); else list.append(h("p", { class: "muted pp-wait" }, "Đang tải danh sách đề…"));
+    rpc("papers_list", { p_grade: g }).then((r) => { paperCache[g] = r || []; if (box.isConnected) draw(); })
+      .catch((e) => { if (/SESSION_EXPIRED/.test(e.message)) return fail(e); if (!paperCache[g]) { list.innerHTML = ""; list.append(h("p", { class: "muted" }, "Chưa tải được danh sách đề. Em thử tải lại trang nhé.")); } });
+    return box;
+  }
+  function paperCard(p) {
+    const c = p.counts || {};
+    const parts = [c.MC ? c.MC + " trắc nghiệm" : "", c.TF ? c.TF + " đúng/sai" : "", c.SA ? c.SA + " trả lời ngắn" : ""].filter(Boolean).join(", ");
+    return h("article", { class: "tcard ppcard" + (p.doing ? " st-doing" : p.tries ? " st-done" : "") },
+      h("div", { class: "tc-top" }, h("span", { class: "tag" }, PAPER_KIND[p.kind] || "Đề"),
+        p.doing ? h("span", { class: "pill warn" }, "Đang làm") : p.tries ? h("span", { class: "pill ok" }, "Đã làm " + p.tries + " lần") : null),
+      h("h3", {}, p.title),
+      h("p", { class: "pc-meta" }, h("b", {}, p.n + " câu"), " trong " + p.minutes + " phút", parts ? h("span", {}, parts) : null),
+      p.best != null ? h("p", { class: "tc-score" }, "Điểm cao nhất ", h("b", {}, fmt(p.best))) : null,
+      h("div", { class: "tc-act" }, h("button", { class: "btn" + (p.doing ? " acc" : p.tries ? " ghost" : ""), onclick: () => startPaper(p) }, p.doing ? "Làm tiếp" : p.tries ? "Làm lại" : "Làm đề")));
+  }
+  function startPaper(p) {
+    const bp = { paper: p.id, kind: "Luyện đề", title: p.title, grade: p.g };
+    const go = async () => {
+      delete paperCache[p.g];
+      try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(r); }
+      catch (e) { fail(e); }
+    };
+    if (p.doing) return go();
+    const c = p.counts || {};
+    KT.confirm(p.title, "Đề gồm <b>" + p.n + " câu</b>" + (c.TF || c.SA ? " (" + [c.MC ? c.MC + " trắc nghiệm" : "", c.TF ? c.TF + " đúng/sai" : "", c.SA ? c.SA + " trả lời ngắn" : ""].filter(Boolean).join(", ") + ")" : "")
+      + ", làm trong <b>" + p.minutes + " phút</b>. Câu hỏi và phương án giữ đúng thứ tự như đề gốc. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng.", "Bắt đầu", go);
   }
 
   /* ----- Sổ câu sai ----- */
@@ -1400,7 +1465,11 @@
     const dur = Math.round((new Date(p.submitted_at) - new Date(p.started_at)) / 1000);
     w.append(h("div", { class: "review-t", style: "margin-top:22px" }, h("h2", { style: "margin:0;font-size:22px" }, p.title), h("span", { class: "sp" }),
       h("button", { class: "btn ghost sm", onclick: renderHome }, "Về trang chủ"),
-      lastCtx && lastCtx.bp ? h("button", { class: "btn sm", onclick: () => (lastCtx.bp.exam ? startDgnl(lastCtx.bp) : setup(lastCtx.bp)) }, "Làm đề khác cùng loại") : null));
+      lastCtx && lastCtx.bp && lastCtx.bp.paper ? h("button", { class: "btn ghost sm", onclick: () => go("learn") }, "Chọn đề khác") : null,
+      lastCtx && lastCtx.bp && lastCtx.bp.paper ? h("button", { class: "btn sm", onclick: async (e) => {
+        e.currentTarget.disabled = true; const bp = lastCtx.bp; delete paperCache[bp.grade];
+        try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(r); } catch (ex) { e.target.disabled = false; fail(ex); } } }, "Làm lại đề này") : null,
+      lastCtx && lastCtx.bp && !lastCtx.bp.paper ? h("button", { class: "btn sm", onclick: () => (lastCtx.bp.exam ? startDgnl(lastCtx.bp) : setup(lastCtx.bp)) }, "Làm đề khác cùng loại") : null));
     if (auto) w.append(h("div", { class: "note" }, "Hết giờ — bài đã được nộp tự động."));
     const nRv = p.items.filter((x) => x.rv), nWrong = p.items.filter((x) => !x.rv && (x.status === "bad" || x.status === "part")).length;
     if (nRv.length || nWrong) {

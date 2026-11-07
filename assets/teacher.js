@@ -1124,7 +1124,7 @@
     f.grade = h("select", { id: "fGrade" }, KT.GRADES.map((g) => h("option", { value: g }, "Toán " + g)));
     const c0 = ov.classes[0]; if (c0.grade && CUR[c0.grade]) f.grade.value = c0.grade;
     f.kind = h("select", { id: "fKind" }, [["lesson", "Theo bài"], ["chapter", "Theo chương"], ["GK1", "Giữa học kì I"], ["HK1", "Cuối học kì I"], ["GK2", "Giữa học kì II"], ["HK2", "Cuối học kì II"],
-      ["grade", "Theo khối (cả năm)"], ["ts10", "Ôn thi vào lớp 10"], ["tn", "Thi thử tốt nghiệp THPT"], ["dgnl_full", "Thi thử ĐGNL ĐHQG-HCM (đủ 120 câu)"], ["dgnl_part", "Luyện ĐGNL theo phần thi"], ["custom", "Tự chọn nhiều bài"], ["tags", "Chọn theo ID câu hỏi"]].map(([v, l]) => h("option", { value: v }, l)));
+      ["grade", "Theo khối (cả năm)"], ["paper", "Theo đề có sẵn"], ["ts10", "Ôn thi vào lớp 10"], ["tn", "Thi thử tốt nghiệp THPT"], ["dgnl_full", "Thi thử ĐGNL ĐHQG-HCM (đủ 120 câu)"], ["dgnl_part", "Luyện ĐGNL theo phần thi"], ["custom", "Tự chọn nhiều bài"], ["tags", "Chọn theo ID câu hỏi"]].map(([v, l]) => h("option", { value: v }, l)));
     f.sub = h("select", { id: "fSub" });
     const subWrap = h("div", {}, h("label", { for: "fSub" }, "Bài / chương"), f.sub);
     const pick = h("div", { class: "lesson-pick full hidden" });
@@ -1142,6 +1142,39 @@
         h("button", { type: "button", class: "btn ghost sm", onclick: () => previewTags() }, "Xem trước câu hỏi")),
       tagList, tagInfo);
     function L0(id, t) { return h("label", { for: id }, t); }
+    // --- chọn đề có sẵn (đồng bộ từ thư mục DETHI_TEX)
+    const PK = { TNTHPT: "Thi thử TN THPT", GHK1: "Giữa kì I", CHK1: "Cuối kì I", GHK2: "Giữa kì II", CHK2: "Cuối kì II", BAI: "Theo bài", KHAC: "Đề khác" };
+    const PORD = ["TNTHPT", "GHK1", "CHK1", "GHK2", "CHK2", "BAI", "KHAC"];
+    const foldVi = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toLowerCase();
+    let papers = {}, paperSel = null;
+    const paperSearch = h("input", { type: "search", placeholder: "Tìm theo tên trường, sở, bài…", "aria-label": "Tìm đề", style: "max-width:320px" });
+    const paperKind = h("select", { "aria-label": "Loại đề", style: "max-width:200px" });
+    const paperList = h("div", { class: "paper-list", role: "radiogroup", "aria-label": "Chọn đề" });
+    const paperWrap = h("div", { class: "full paperbox hidden" }, h("label", {}, "Chọn đề"),
+      h("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px" }, paperKind, paperSearch), paperList);
+    const pctx = (p) => [p.counts.MC ? p.counts.MC + " NPA" : "", p.counts.TF ? p.counts.TF + " Đ/S" : "", p.counts.SA ? p.counts.SA + " TLN" : ""].filter(Boolean).join(" · ");
+    const drawPapers = () => {
+      const g = +f.grade.value, all = papers[g] || [], qy = foldVi(paperSearch.value.trim()), kd = paperKind.value;
+      paperList.innerHTML = "";
+      if (!all.length) { paperList.append(h("div", { class: "empty", style: "padding:12px" }, "Chưa có đề Toán " + g + ". Đặt file .tex của đề vào thư mục D:\\TOÁN\\DETHI_TEX\\" + g + "\\… để công cụ đồng bộ tự đưa lên.")); return; }
+      const rows = all.filter((p) => (!kd || p.kind === kd) && (!qy || foldVi(p.title + " " + p.src).includes(qy)));
+      if (!rows.length) { paperList.append(h("div", { class: "empty", style: "padding:12px" }, "Không có đề nào khớp.")); return; }
+      rows.slice(0, 200).forEach((p) => {
+        const rb = h("input", { type: "radio", name: "paperPick", value: p.id, checked: paperSel === p.id, onchange: () => { paperSel = p.id; update(true); } });
+        paperList.append(h("label", { class: "chk paper-row" + (paperSel === p.id ? " on" : "") }, rb,
+          h("span", {}, h("b", {}, p.title), h("small", {}, (PK[p.kind] || "Đề") + " · " + p.n + " câu (" + pctx(p) + ") · " + p.minutes + " phút" + (p.n_src > p.n ? " · thiếu " + (p.n_src - p.n) + " câu chưa dựng được hình" : "")))));
+      });
+      if (rows.length > 200) paperList.append(h("div", { class: "sub" }, "… còn " + (rows.length - 200) + " đề, gõ để lọc."));
+    };
+    const loadPapers = async () => {
+      const g = +f.grade.value;
+      if (!papers[g]) { paperList.innerHTML = ""; paperList.append(h("div", { class: "loading", style: "padding:14px" }, "Đang tải danh sách đề…")); try { papers[g] = await T("t_papers", { p_grade: g }); } catch (e) { fail(e); papers[g] = []; } }
+      const ks = PORD.filter((k) => papers[g].some((p) => p.kind === k));
+      paperKind.innerHTML = ""; paperKind.append(h("option", { value: "" }, "Mọi loại đề (" + papers[g].length + ")"), ...ks.map((k) => h("option", { value: k }, PK[k] + " (" + papers[g].filter((p) => p.kind === k).length + ")")));
+      if (!papers[g].some((p) => p.id === paperSel)) paperSel = null;
+      drawPapers(); update(true);
+    };
+    paperSearch.addEventListener("input", drawPapers); paperKind.addEventListener("change", drawPapers);
     const drawTagList = () => {
       const g = +f.grade.value, rows = tagGroups[g] || [], cur = new Set(parseTags(f.tags.value)), qy = tagSearch.value.trim().toUpperCase();
       tagList.innerHTML = "";
@@ -1199,6 +1232,7 @@
     f.show = h("input", { type: "checkbox", id: "fShow", checked: true });
     f.levels = {}; ["NB", "TH", "VD", "VDC"].forEach((k) => (f.levels[k] = h("input", { type: "checkbox", checked: true, id: "lv" + k })));
     const avail = h("div", { class: "avail full" });
+    const lvRow = h("div", {}, h("label", {}, "Mức độ được bốc"), h("div", { style: "display:flex;gap:12px;flex-wrap:wrap" }, ["NB", "TH", "VD", "VDC"].map((k) => h("label", { class: "chk" }, f.levels[k], k))));
     let bp = null, dst = null;
     const fillSub = () => {
       const g = +f.grade.value;
@@ -1214,6 +1248,10 @@
       if (k === "dgnl_part") KT.DGNL.secs.forEach((S) => f.sub.append(h("option", { value: S.k }, S.name + " (" + (dst && dst[S.k] ? dst[S.k].n : 0) + " câu)")));
       pick.classList.toggle("hidden", k !== "custom");
       tagWrap.classList.toggle("hidden", k !== "tags");
+      paperWrap.classList.toggle("hidden", k !== "paper");
+      [f.mc, f.tf, f.sa].forEach((x) => (x.disabled = isEx || k === "paper"));
+      lvRow.classList.toggle("hidden", k === "paper" || isEx);
+      if (k === "paper") { loadPapers(); return; }
       if (k === "tags") { loadTagGroups(); onTags(); }
       if (k === "lesson") CUR[g].chapters.forEach((ch) => { const og = h("optgroup", { label: "Chương " + romans[ch.no] }); ch.lessons.forEach((L) => { const c = bankCounts([g + "-" + L.no]); og.append(h("option", { value: L.no }, "Bài " + L.no + ". " + L.name + " (" + (c.MC + c.TF + c.SA) + " câu)")); }); f.sub.append(og); });
       if (k === "chapter") CUR[g].chapters.forEach((ch) => { const c = bankCounts(KT.chapterLessons(g, ch.no)); f.sub.append(h("option", { value: ch.no }, "Chương " + romans[ch.no] + ". " + ch.name + " (" + (c.MC + c.TF + c.SA) + ")")); });
@@ -1230,12 +1268,20 @@
       else if (k === "ts10") bp = B.ts10();
       else if (k === "dgnl_full") bp = B.dgnlFull();
       else if (k === "dgnl_part") bp = B.dgnlPart(f.sub.value || "TV");
+      else if (k === "paper") { const p = (papers[g] || []).find((x) => x.id === paperSel);
+        bp = p ? { kind: "Theo đề", grade: g, title: p.title, paper: p.id, counts: Object.assign({ MC: 0, TF: 0, SA: 0 }, p.counts), minutes: p.minutes } : { kind: "Theo đề", grade: g, title: "", paper: null, counts: { MC: 0, TF: 0, SA: 0 }, minutes: 90 }; }
       else if (k === "tags") { const tg = parseTags(f.tags.value); bp = { kind: "Theo ID", grade: g, title: "Kiểm tra theo ID " + (tg.length ? tg.slice(0, 4).join(", ") + (tg.length > 4 ? "…" : "") : "") , lessons: tagMatch ? tagMatch.lessons : [], tags: tg, counts: { MC: 10, TF: 2, SA: 2 }, minutes: 30 }; }
       else { const ls = [...pick.querySelectorAll("input:checked")].map((x) => x.value); bp = { kind: "Tự chọn", grade: g, title: "Kiểm tra " + (ls.length ? ls.map((x) => "B" + x.split("-")[1]).join(", ") : "") + " · Toán " + g, lessons: ls, counts: { MC: 12, TF: 4, SA: 6 }, minutes: 45 }; }
       if (k === "tags" && !resetCounts && f.title.dataset.auto !== "0") f.title.value = bp.title;
       if (resetCounts) { const fc = k === "tags" ? bp.counts : KT.fitCounts(bp.counts, bankCounts(bp.lessons)); if (k !== "tags" && !(fc.MC + fc.TF + fc.SA)) Object.assign(fc, bp.counts);
         f.title.dataset.auto = "1"; f.title.value = bp.title; f.mc.value = fc.MC; f.tf.value = fc.TF; f.sa.value = fc.SA; f.min.value = bp.minutes; setClose(); }
       avail.innerHTML = "";
+      if (k === "paper") {
+        if (resetCounts) [...paperList.querySelectorAll(".paper-row")].forEach((r) => r.classList.toggle("on", r.querySelector("input").checked));
+        if (!bp.paper) { avail.append("Chọn một đề trong danh sách ở trên."); return; }
+        avail.append(h("span", { style: "color:var(--ok)" }, "Cả lớp làm cùng một đề: đủ " + (bp.counts.MC + bp.counts.TF + bp.counts.SA) + " câu, giữ nguyên thứ tự câu và phương án như đề gốc."));
+        return;
+      }
       if (bp.exam) {
         if (resetCounts) { f.mc.value = bp.counts.MC; f.tf.value = 0; f.sa.value = 0; }
         if (!dst) { avail.append("Đang đếm số câu ĐGNL trong ngân hàng…"); return; }
@@ -1271,21 +1317,23 @@
     f.cls.onchange = () => { const c = ov.classes.find((x) => x.id === +f.cls.value); if (c && c.grade && CUR[c.grade]) { f.grade.value = c.grade; fillSub(); } };
     const L = (id, t) => h("label", { for: id }, t);
     const form = h("div", { class: "form" },
-      h("div", {}, L("fCls", "Lớp"), f.cls), h("div", {}, L("fGrade", "Khối kiến thức"), f.grade), h("div", {}, L("fKind", "Loại đề"), f.kind), subWrap, pick, tagWrap,
+      h("div", {}, L("fCls", "Lớp"), f.cls), h("div", {}, L("fGrade", "Khối kiến thức"), f.grade), h("div", {}, L("fKind", "Loại đề"), f.kind), subWrap, pick, tagWrap, paperWrap,
       h("div", { class: "full" }, L("fTitle", "Tên bài kiểm tra"), f.title),
       h("div", {}, L("fMC", "Số câu nhiều phương án"), f.mc), h("div", {}, L("fTF", "Số câu đúng/sai"), f.tf), h("div", {}, L("fSA", "Số câu trả lời ngắn"), f.sa), h("div", {}, L("fMin", "Thời gian làm (phút)"), f.min),
       avail,
       h("div", {}, L("fOpen", "Mở lúc"), f.open), h("div", {}, L("fClose", "Đóng lúc (hết giờ thì tự thu bài)"), f.close), h("div", {}, L("fMax", "Số lần được làm"), f.max),
-      h("div", {}, h("label", {}, "Mức độ được bốc"), h("div", { style: "display:flex;gap:12px;flex-wrap:wrap" }, ["NB", "TH", "VD", "VDC"].map((k) => h("label", { class: "chk" }, f.levels[k], k)))),
+      lvRow,
       h("label", { class: "chk full" }, f.show, "Cho học sinh xem đáp án và lời giải sau khi nộp"),
       h("div", { class: "full" }, h("button", { class: "btn", onclick: submitAssign }, "Giao đề")));
     async function submitAssign(e) {
       if (f.kind.value === "tags") { if (!bp.tags.length) return KT.toast("Chưa nhập ID câu hỏi nào.", "bad"); if (tagMatch && !(tagMatch.counts.MC + tagMatch.counts.TF + tagMatch.counts.SA)) return KT.toast("Không có câu nào khớp với ID đã nhập.", "bad"); }
+      else if (f.kind.value === "paper") { if (!bp.paper) return KT.toast("Chưa chọn đề nào.", "bad"); }
       else if (!bp.exam && !bp.lessons.length) return KT.toast("Chưa chọn bài nào.", "bad");
       const levels = Object.entries(f.levels).filter(([, x]) => x.checked).map(([k]) => k);
       const b2 = Object.assign({}, bp, { title: f.title.value.trim() || bp.title, counts: { MC: +f.mc.value || 0, TF: +f.tf.value || 0, SA: +f.sa.value || 0 }, minutes: +f.min.value || bp.minutes,
         levels: levels.length === 4 ? null : levels });
       if (bp.exam) { b2.counts = { MC: bp.parts.reduce((a, x) => a + x.n, 0), TF: 0, SA: 0 }; delete b2.levels; }
+      if (bp.paper) { b2.counts = bp.counts; delete b2.levels; }
       if (!b2.counts.MC && !b2.counts.TF && !b2.counts.SA) return KT.toast("Đề chưa có câu nào.", "bad");
       e.target.disabled = true;
       try {
@@ -1295,7 +1343,7 @@
         ov = await T("t_overview"); tab = "monitor"; store.set("kt_t_tab", tab); curAsg = r.id; render();
       } catch (ex) { fail(ex); e.target.disabled = false; }
     }
-    el.append(h("div", { class: "panel" }, h("h3", {}, "Giao đề kiểm tra"), h("p", { class: "sub" }, "Mỗi học sinh nhận một đề bốc ngẫu nhiên riêng theo cấu trúc này, cùng số câu từng phần, rải đều các bài và mức độ; thứ tự phương án được xáo."), form));
+    el.append(h("div", { class: "panel" }, h("h3", {}, "Giao đề kiểm tra"), h("p", { class: "sub" }, "Mỗi học sinh nhận một đề bốc ngẫu nhiên riêng theo cấu trúc này, cùng số câu từng phần, rải đều các bài và mức độ; thứ tự phương án được xáo. Riêng loại “Theo đề có sẵn”: cả lớp làm chung một đề thật, giữ nguyên như đề gốc."), form));
     fillSub();
   }
 

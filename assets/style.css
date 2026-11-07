@@ -553,6 +553,15 @@ select.mini{padding:6px 8px;border:1.5px solid var(--line-2);border-radius:8px;b
 .prev-q .qmini{max-height:none;min-width:0;margin-top:6px}
 .prev-o{margin:6px 0 0;padding-left:26px;font-family:var(--serif);font-size:15.5px}
 .tag-list .tag-row{display:flex;gap:4px 8px;flex-wrap:wrap;margin:0}
+.paperbox{border:1px dashed var(--line-2);border-radius:var(--r-s);padding:12px 14px;background:var(--surface-2)}
+.paper-list{max-height:340px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);padding:4px}
+.paper-list .paper-row{display:flex;align-items:flex-start;gap:10px;margin:0;padding:8px 10px;border-radius:8px;cursor:pointer}
+.paper-list .paper-row:hover{background:var(--surface-2)}
+.paper-list .paper-row.on{background:var(--brand-soft)}
+.paper-list .paper-row input{margin-top:3px;flex:none}
+.paper-list .paper-row span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.paper-list .paper-row b{font-size:14px;font-weight:650}
+.paper-list .paper-row small{color:var(--ink-3);font-size:12.5px}
 
 /* ---------- biểu đồ & thống kê ---------- */
 .ktip{position:fixed;z-index:100;display:none;max-width:260px;background:var(--ink);color:var(--bg);font-size:13px;line-height:1.4;padding:7px 10px;border-radius:8px;pointer-events:none;box-shadow:var(--shadow)}
@@ -1997,3 +2006,11 @@ body.gate-on{overflow:hidden}
   .fee-act{grid-column:1/-1;text-align:left}
   .fee-filter input{max-width:none}
 }
+
+/* ===== Luyện theo đề có sẵn ===== */
+.papers{margin-top:8px}
+.ppcard .pc-meta{margin:0;color:var(--ink-2);font-size:14px;display:flex;flex-wrap:wrap;gap:2px 5px;font-variant-numeric:tabular-nums}
+.ppcard .pc-meta span{flex-basis:100%;color:var(--ink-3);font-size:13px}
+.ppcard .tc-act{margin-top:auto}
+.pp-more{display:flex;justify-content:center;margin-top:16px}
+.pp-wait{padding:18px 0}
