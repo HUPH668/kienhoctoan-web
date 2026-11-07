@@ -6,6 +6,7 @@
   /* ================= PHẦN 1: LÕI TOÁN ================= */
   const TPL = {            // các khuôn (template) hiển thị tự nhiên: danh sách ô theo thứ tự trái → phải, ô bắt đầu
     frac: { keys: ["a", "b"], first: "a" },
+    mixed: { keys: ["w", "a", "b"], first: "w" },     // hỗn số: phần nguyên, tử, mẫu
     sqrt: { keys: ["a"], first: "a" },
     root: { keys: ["n", "a"], first: "n" },
     pow: { keys: ["a"], first: "a" },
@@ -24,9 +25,10 @@
   const FN = {             // kí hiệu hàm trên màn hình → tên trong bộ tính
     "sin(": "sin", "cos(": "cos", "tan(": "tan", "sin⁻¹(": "asin", "cos⁻¹(": "acos", "tan⁻¹(": "atan",
     "log(": "log", "ln(": "ln", "GCD(": "gcd", "LCM(": "lcm", "Int(": "int", "Intg(": "intg", "Rnd(": "rnd",
-    "RanInt#(": "ranint", "Abs(": "abs", "Pol(": "pol",
+    "RanInt#(": "ranint", "Abs(": "abs", "Pol(": "pol", "Rec(": "rec",
+    "sinh(": "sinh", "cosh(": "cosh", "tanh(": "tanh", "sinh⁻¹(": "asinh", "cosh⁻¹(": "acosh", "tanh⁻¹(": "atanh",
   };
-  const VARS = ["A", "B", "C", "D", "E", "F", "M", "x", "y"];
+  const VARS = ["A", "B", "C", "D", "E", "F", "M", "x", "y", "z"];
   const err = (k, msg) => { const e = new Error(msg || k); e.calc = k; return e; };
 
   // ---- tách từ (token) từ cây ----
@@ -56,6 +58,8 @@
         case ")": out.push({ k: "rp" }); break;
         case ",": out.push({ k: "comma" }); break;
         case "!": out.push({ k: "fact" }); break;
+        case "°": out.push({ k: "dms" }); break;
+        case "÷R": throw err("Syntax");      // phép chia có dư chỉ đứng một mình (xử lí ở giao diện)
         case "%": out.push({ k: "pct" }); break;
         case "P": out.push({ k: "perm", v: "P" }); break;
         case "C": out.push({ k: "perm", v: "C" }); break;
@@ -71,11 +75,24 @@
           else throw err("Syntax");
       }
     }
-    return out;
+    // gộp số độ phút giây: 12°30°15° = 12 + 30/60 + 15/3600
+    const res = [];
+    for (let j = 0; j < out.length; j++) {
+      const t = out[j];
+      if (t.k === "num" && out[j + 1] && out[j + 1].k === "dms") {
+        let v = t.v, sc = 1; j++;
+        while (sc < 3600 && out[j + 1] && out[j + 1].k === "num" && out[j + 2] && out[j + 2].k === "dms") { sc *= 60; v += out[j + 1].v / sc; j += 2; }
+        res.push({ k: "num", v, dot: true }); continue;
+      }
+      if (t.k === "dms") throw err("Syntax");
+      res.push(t);
+    }
+    return res;
   }
   function tplAst(n) {
     switch (n.t) {
       case "frac": return { t: "bin", op: "/", a: parse(n.a), b: parse(n.b) };
+      case "mixed": { const w = parse(n.w), fr = { t: "bin", op: "/", a: parse(n.a), b: parse(n.b) }; return { t: "mixed", w, fr }; }
       case "sqrt": return { t: "fn", n: "sqrt", args: [parse(n.a)] };
       case "root": return { t: "fn", n: "root", args: [parse(n.n), parse(n.a)] };
       case "logb": return { t: "fn", n: "logb", args: [parse(n.n), parse(n.a)] };
@@ -191,6 +208,7 @@
           return v == null ? 0 : v;
         }
         case "neg": return -ev(m.a, scope);
+        case "mixed": { const w = ev(m.w, scope), q = ev(m.fr, scope); return w < 0 ? w - q : w + q; }
         case "bin": {
           const a = ev(m.a, scope), b = ev(m.b, scope);
           if (m.op === "+") return a + b; if (m.op === "-") return a - b; if (m.op === "*") return a * b;
@@ -276,6 +294,14 @@
         case "intg": need(1); return Math.floor(x);
         case "rnd": need(1); return Number(x.toPrecision(10));
         case "ran": return Math.round(Math.random() * 1000) / 1000;
+        case "sinh": need(1); return snap(Math.sinh(x));
+        case "cosh": need(1); return Math.cosh(x);
+        case "tanh": need(1); return snap(Math.tanh(x));
+        case "asinh": need(1); return Math.asinh(x);
+        case "acosh": need(1); if (x < 1) throw err("Math"); return Math.acosh(x);
+        case "atanh": need(1); if (Math.abs(x) >= 1) throw err("Math"); return Math.atanh(x);
+        case "pol": { need(2); const r = Math.hypot(x, a[1]); if (r === 0) throw err("Math"); const th = fromR(Math.atan2(a[1], x)); env.pair = [["r", r], ["θ", snap(th)]]; return r; }
+        case "rec": { need(2); const t = toR(a[1]), X = snap(+(x * Math.cos(t)).toPrecision(13)), Y = snap(+(x * Math.sin(t)).toPrecision(13)); env.pair = [["x", X], ["y", Y]]; return X; }
         case "ranint": need(2); if (!isInt(x) || !isInt(a[1]) || a[1] < x) throw err("Math"); return Math.round(x) + Math.floor(Math.random() * (Math.round(a[1]) - Math.round(x) + 1));
       }
       throw err("Syntax");
@@ -538,6 +564,7 @@
     const S = (k) => rend(it[k], cur, true);
     switch (it.t) {
       case "frac": return $("span", "m-frac", $("span", "m-num", S("a")), $("span", "m-den", S("b")));
+      case "mixed": return $("span", "m-grp", S("w"), $("span", "m-frac", $("span", "m-num", S("a")), $("span", "m-den", S("b"))));
       case "sqrt": { const r = $("span", "m-sqrt"); r.innerHTML = SVG_RAD; r.append($("span", "m-rad", S("a"))); return r; }
       case "root": { const r = $("span", "m-sqrt"); r.innerHTML = SVG_RAD; r.append($("span", "m-rad", S("a"))); return $("span", "m-root", $("span", "m-idx", S("n")), r); }
       case "pow": return $("span", "m-sup", S("a"));
@@ -584,7 +611,7 @@
     vert(dir) {
       for (let s = this.st.length - 1; s >= 0; s--) {
         const f = this.st[s], t = f.node.t; let to = null;
-        if (t === "frac") to = dir < 0 ? (f.key === "b" ? "a" : null) : (f.key === "a" ? "b" : null);
+        if (t === "frac" || t === "mixed") to = dir < 0 ? (f.key === "b" ? "a" : null) : (f.key === "a" ? "b" : null);
         else if (t === "int" || t === "sum" || t === "prod") to = dir < 0 ? (f.key === "lo" ? "hi" : null) : (f.key === "hi" ? "lo" : null);
         if (to) { this.st.length = s; this.st.push({ pa: f.pa, node: f.node, key: to }); this.arr = f.node[to]; this.i = this.arr.length; return true; }
       }
@@ -613,7 +640,8 @@
     sin: ["sin("], cos: ["cos("], tan: ["tan("], asin: ["sin⁻¹("], acos: ["cos⁻¹("], atan: ["tan⁻¹("],
     log: ["log("], ln: ["ln("], gcd: ["GCD("], lcm: ["LCM("], intp: ["Int("], intg: ["Intg("], rnd: ["Rnd("], ranint: ["RanInt#("], ran: ["Ran#"],
     add: ["+"], sub: ["−"], mul: ["×"], div: ["÷"], lp: ["("], rp: [")"], comma: [","], neg: ["−"], dot: ["."], fact: ["!"], npr: ["P"], ncr: ["C"], pct: ["%"],
-    pi: ["π"], e: ["e"], ans: ["Ans"], preans: ["PreAns"], eqs: ["="],
+    pi: ["π"], e: ["e"], ans: ["Ans"], preans: ["PreAns"], eqs: ["="], dms: ["°"], divr: ["÷R"], pol: ["Pol("], rec: ["Rec("],
+    sinh: ["sinh("], cosh: ["cosh("], tanh: ["tanh("], asinh: ["sinh⁻¹("], acosh: ["cosh⁻¹("], atanh: ["tanh⁻¹("],
   };
   for (let d = 0; d <= 9; d++) INS["d" + d] = [String(d)];
   Core.VARS.forEach((v) => (INS["v" + v] = [v]));
@@ -623,6 +651,7 @@
     let n;
     switch (a) {
       case "frac": n = T("frac"); return ed.ins([n], n);
+      case "mixed": n = T("mixed"); return ed.ins([n], n);
       case "sqrt": n = T("sqrt"); return ed.ins([n], n);
       case "cbrt": n = T("root", { n: ["3"] }); return ed.ins([n], n, "a");
       case "nroot": n = T("root"); return ed.ins([n], n);
@@ -639,26 +668,27 @@
       case "int": case "sum": case "prod": n = T(a); return ed.ins([n], n);
     }
   }
-  const isIns = (a) => !!INS[a] || ["frac", "sqrt", "cbrt", "nroot", "powx", "sq", "cube", "inv", "tenx", "ex", "x10", "logb", "abs", "dx", "int", "sum", "prod"].includes(a);
-  const POSTOP = new Set(["add", "sub", "mul", "div", "powx", "sq", "cube", "inv", "fact", "npr", "ncr", "pct", "x10"]);
+  const isIns = (a) => !!INS[a] || ["frac", "mixed", "sqrt", "cbrt", "nroot", "powx", "sq", "cube", "inv", "tenx", "ex", "x10", "logb", "abs", "dx", "int", "sum", "prod"].includes(a);
+  const POSTOP = new Set(["add", "sub", "mul", "div", "powx", "sq", "cube", "inv", "fact", "npr", "ncr", "pct", "x10", "divr"]);
 
   // ---- bàn phím: [chính, SHIFT, ALPHA] ----
-  const K = (main, act, sh, shAct, al, alAct, cls) => ({ main, act, sh, shAct, al, alAct, cls: cls || "" });
+  const K = (main, act, sh, shAct, al, alAct, cls, bl) => ({ main, act, sh, shAct, al, alAct, cls: cls || "", bl: bl || "" });
+  // hàng trên cùng (hai bên phím di chuyển): OPTN CALC … ∫ x
+  const KEYS_L = [K("OPTN", "OPTN"), K("CALC", "CALC", "SOLVE", "SOLVE", "=", "eqs")];
+  const KEYS_R = [K("∫▫", "int", "d/dx", "dx", ":", null), K("x", "vx", "Σ▫", "sum", "Π▫", "prod")];
   const KEYS_FN = [
-    K("CALC", "CALC", "SOLVE", "SOLVE", "=", "eqs"), K("∫▫", "int", "d/dx", "dx", "Σ", "sum"), K("x", "vx", "y", "vy"),
-    K("x⁻¹", "inv", "x!", "fact"), K("log▫▫", "logb", "Π", "prod"), K("▫⁄▫", "frac", "", null),
-    K("√▫", "sqrt", "∛", "cbrt"), K("x²", "sq", "x³", "cube"), K("x▫", "powx", "ˣ√", "nroot"),
-    K("log", "log", "10ˣ", "tenx"), K("ln", "ln", "eˣ", "ex"), K("(−)", "neg", "Abs", "abs", "A", "vA"),
-    K("STO", "STO", "RCL", "RCL"), K("sin", "sin", "sin⁻¹", "asin", "D", "vD"), K("cos", "cos", "cos⁻¹", "acos", "E", "vE"),
-    K("tan", "tan", "tan⁻¹", "atan", "F", "vF"), K("(", "lp", "GCD", "gcd", "B", "vB"), K(")", "rp", ",", "comma", "C", "vC"),
-    K("S⇔D", "SD", "LCM", "lcm"), K("M+", "MPLUS", "M−", "MMINUS", "M", "vM"), K("π", "pi", "e", "e"),
-    K("%", "pct", "Int", "intp"), K("Ran#", "ran", "RanInt", "ranint"), K("Rnd", "rnd", "Intg", "intg"),
+    K("▫⁄▫", "frac", "▫▫⁄▫", "mixed", "÷R", "divr"), K("√▫", "sqrt", "∛▫", "cbrt"), K("x²", "sq", "x³", "cube", "", null, "", "DEC"),
+    K("x▫", "powx", "▫√▫", "nroot", "", null, "", "HEX"), K("log▫▫", "logb", "10▫", "tenx", "", null, "", "BIN"), K("ln", "ln", "e▫", "ex", "", null, "", "OCT"),
+    K("(−)", "neg", "log", "log", "A", "vA"), K("°'\"", "DMS", "FACT", "FACT", "B", "vB"), K("x⁻¹", "inv", "x!", "fact", "C", "vC"),
+    K("sin", "sin", "sin⁻¹", "asin", "D", "vD"), K("cos", "cos", "cos⁻¹", "acos", "E", "vE"), K("tan", "tan", "tan⁻¹", "atan", "F", "vF"),
+    K("STO", "STO", "RECALL", "RCL"), K("ENG", "ENG", "←", "ENGB", "i", null), K("(", "lp", "Abs", "abs", "x", "vx"),
+    K(")", "rp", ",", "comma", "y", "vy"), K("S⇔D", "SD", "ab/c⇔d/c", "MIXED", "z", "vz"), K("M+", "MPLUS", "M−", "MMINUS", "M", "vM"),
   ];
   const KEYS_NUM = [
-    K("7", "d7"), K("8", "d8"), K("9", "d9"), K("DEL", "DEL", "", null, "", null, "k-del"), K("AC", "AC", "OFF", "OFF", "", null, "k-ac"),
-    K("4", "d4"), K("5", "d5"), K("6", "d6"), K("×", "mul", "nPr", "npr"), K("÷", "div", "nCr", "ncr"),
-    K("1", "d1"), K("2", "d2"), K("3", "d3"), K("+", "add"), K("−", "sub"),
-    K("0", "d0"), K(".", "dot"), K("×10ˣ", "x10", "π", "pi"), K("Ans", "ans", "PreAns", "preans"), K("=", "EQ", "≈", "APPROX", "", null, "k-eq"),
+    K("7", "d7", "CONST", "CONST"), K("8", "d8", "CONV", "CONV"), K("9", "d9", "RESET", "RESET"), K("DEL", "DEL", "INS", null, "UNDO", "UNDO", "k-del"), K("AC", "AC", "OFF", "OFF", "", null, "k-ac"),
+    K("4", "d4"), K("5", "d5"), K("6", "d6"), K("×", "mul", "nPr", "npr", "GCD", "gcd"), K("÷", "div", "nCr", "ncr", "LCM", "lcm"),
+    K("1", "d1"), K("2", "d2"), K("3", "d3"), K("+", "add", "Pol", "pol", "Int", "intp"), K("−", "sub", "Rec", "rec", "Intg", "intg"),
+    K("0", "d0", "Rnd", "rnd"), K("•", "dot", "Ran#", "ran", "RanInt", "ranint"), K("×10ˣ", "x10", "π", "pi", "e", "e"), K("Ans", "ans", "%", "pct", "PreAns", "preans"), K("=", "EQ", "≈", "APPROX", "", null, "k-eq"),
   ];
   const keyLabel = (s) => { // ô trống ▫ vẽ thành ô vuông nhỏ
     const sp = $("span", "kl");
@@ -667,12 +697,14 @@
     if (s === "e▫") { sp.append("e", $("sup", "", $("i", "kb"))); return sp; }
     if (s === "×10ˣ") { sp.append("×10", $("sup", "", "x")); return sp; }
     if (s === "▫⁄▫") { sp.append($("span", "kfr", $("i", "kb"), $("i", "kfl"), $("i", "kb"))); return sp; }
+    if (s === "▫▫⁄▫") { sp.append($("i", "kb sm"), $("span", "kfr sm", $("i", "kb"), $("i", "kfl"), $("i", "kb"))); return sp; }
+    if (s === "Σ▫" || s === "Π▫") { sp.append(s[0], $("i", "kb sm")); return sp; }
     if (s === "log▫▫") { sp.append("log", $("sub", "", $("i", "kb")), $("i", "kb")); return sp; }
     if (s === "∫▫") { sp.append("∫", $("i", "kb")); return sp; }
     if (s === "√▫") { sp.append("√", $("i", "kb")); return sp; }
     if (s === "∛▫") { sp.append("∛", $("i", "kb sm")); return sp; }
     if (s === "▫√▫") { sp.append($("sup", "", $("i", "kb sm")), "√", $("i", "kb sm")); return sp; }
-    sp.textContent = s; return sp;
+    sp.textContent = s; if (s.length > 7) sp.classList.add("kl-sm"); return sp;
   };
 
   // ---- trạng thái lưu trên máy ----
@@ -681,7 +713,7 @@
   const saved = load();
   const S = {
     ang: saved.ang === "R" ? "R" : "D", exact: saved.exact !== false, ans: +saved.ans || 0, preAns: +saved.preAns || 0,
-    vars: Object.assign({ A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, M: 0, x: 0, y: 0 }, saved.vars || {}),
+    vars: Object.assign({ A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, M: 0, x: 0, y: 0, z: 0 }, saved.vars || {}),
     hist: Array.isArray(saved.hist) ? saved.hist.slice(-30) : [], pos: saved.pos || null, last: saved.mode || "comp",
     shift: false, alpha: false, sto: false,
   };
@@ -690,7 +722,30 @@
   const ERRT = { Math: ["Lỗi toán", "Math ERROR"], Syntax: ["Lỗi cú pháp", "Syntax ERROR"], Solve: ["Không tìm được nghiệm", "Can't Solve"] };
   const errBox = (e) => { const k = (e && e.calc) || "Math"; const t = ERRT[k] || ERRT.Math; return $("div", "c-err", $("b", "", t[0]), $("span", "", t[1] + (e && e.message && e.message !== k ? ". " + e.message : ""))); };
   const valNodes = (v, dec) => (dec || !S.exact ? Core.decNodes(v) : Core.exactNodes(v));
-  const evalArr = (arr) => { const a = Core.parse(arr); return { v: Core.evaluate(a, env()), dot: Core.hasDot(a) }; };
+  const evalArr = (arr) => { const E = env(), a = Core.parse(arr); return { v: Core.evaluate(a, E), dot: Core.hasDot(a), pair: E.pair }; };
+  // ---- các cách hiện kết quả: kĩ thuật (ENG), độ phút giây, thừa số nguyên tố, hỗn số ----
+  const numCh = (x) => Core.chars(String(x).replace("-", "−"));
+  const engNodes = (v, e) => { const m = Number((v / Math.pow(10, e)).toPrecision(10)); return numCh(m).concat(["×10", Core.mk("pow", { a: numCh(e) })]); };
+  const engBase = (v) => (v === 0 ? 0 : Math.floor(Math.log10(Math.abs(v)) / 3) * 3);
+  function dmsNodes(v) {
+    const neg = v < 0; let a = Math.abs(v), d = Math.floor(a), mf = (a - d) * 60, m = Math.floor(mf + 1e-9), sc = Math.round((mf - m) * 6000) / 100;
+    if (sc >= 60) { sc -= 60; m++; } if (m >= 60) { m -= 60; d++; }
+    return (neg ? ["−"] : []).concat(numCh(d), ["°"], numCh(m), ["'"], numCh(Number(sc.toFixed(2))), ['"']);
+  }
+  function factNodes(v) {
+    let n = Math.round(Math.abs(v)); const out = [];
+    const push = (p, k) => { if (out.length) out.push("×"); out.push(...numCh(p)); if (k > 1) out.push(Core.mk("pow", { a: numCh(k) })); };
+    for (let p = 2; p * p <= n; p++) { let k = 0; while (n % p === 0) { n /= p; k++; } if (k) push(p, k); }
+    if (n > 1) push(n, 1);
+    return out.length ? out : ["1"];
+  }
+  function mixedNodes(v) {
+    const f = Core.toFrac(v); if (!f || Math.abs(f[0]) <= f[1] || f[1] === 1) return null;
+    const p = Math.abs(f[0]), w = Math.floor(p / f[1]);
+    return (f[0] < 0 ? ["−"] : []).concat(numCh(w), [Core.mk("frac", { a: numCh(p - w * f[1]), b: numCh(f[1]) })]);
+  }
+  const dispNodes = (R) => R.disp === "eng" ? engNodes(R.v, R.e) : R.disp === "dms" ? dmsNodes(R.v) : R.disp === "fact" ? factNodes(R.v)
+    : R.disp === "mixed" ? (mixedNodes(R.v) || R.ex) : R.showDec ? R.de : R.ex;
   const big = (nodes) => rend(nodes, null);
 
   /* ---------- chế độ 1: tính toán ---------- */
@@ -700,10 +755,21 @@
     run(approx) {
       if (this.ed.empty()) return;
       try {
+        const top = this.ed.root, kd = top.indexOf("÷R");
+        if (kd >= 0) {     // phép chia có dư: Q = thương, R = số dư
+          const a = evalArr(top.slice(0, kd)).v, b = evalArr(top.slice(kd + 1)).v, isI = (x) => Math.abs(x - Math.round(x)) < 1e-9;
+          if (!isI(a) || !isI(b) || a < 0 || b <= 0) throw Core.err("Math");
+          const q = Math.floor(Math.round(a) / Math.round(b)), r = Math.round(a) - q * Math.round(b);
+          S.preAns = S.ans; S.ans = q;
+          S.hist.push({ e: clone(top), v: q, d: false }); if (S.hist.length > 30) S.hist.shift();
+          this.res = { v: q, pair: [["Q", q], ["R", r]] }; this.phase = "res"; this.hi = -1; persist(); return;
+        }
         const r = evalArr(this.ed.root);
         S.preAns = S.ans; S.ans = r.v;
         S.hist.push({ e: clone(this.ed.root), v: r.v, d: r.dot || approx }); if (S.hist.length > 30) S.hist.shift();
-        this.setRes(r.v, r.dot || approx); this.hi = -1; persist();
+        this.setRes(r.v, r.dot || approx); this.hi = -1;
+        if (r.pair) { r.pair.forEach(([k, v]) => { if (k === "θ" || k === "y") S.vars.y = v; else S.vars.x = v; }); this.res.pair = r.pair; }
+        persist();
       } catch (e) { this.res = { err: e }; this.phase = "res"; }
     },
     startPrompt(kind) {
@@ -730,8 +796,30 @@
       } catch (e) { this.res = { err: e }; this.phase = "res"; }
       this.pr = null;
     },
+    undo: [],
+    snap() { if (this.phase === "edit" || this.phase === "res") { this.undo.push(clone(this.ed.root)); if (this.undo.length > 30) this.undo.shift(); } },
     key(a) {
       if (this.phase === "rcl") { this.phase = this.res ? "res" : "edit"; return; }
+      const R0 = this.phase === "res" && this.res && !this.res.err && !this.res.pair && !this.res.solve && this.res.v != null ? this.res : null;
+      switch (a) {
+        case "UNDO": { const u = this.undo.pop(); if (u) { this.ed = new Ed(u); this.res = null; this.phase = "edit"; } return; }
+        case "ENG": case "ENGB":
+          if (!R0) return;
+          if (R0.disp !== "eng") R0.e = engBase(R0.v) + (a === "ENGB" ? 3 : 0); else R0.e += a === "ENG" ? -3 : 3;
+          R0.disp = "eng"; return;
+        case "DMS":
+          if (R0) { R0.disp = R0.disp === "dms" ? null : "dms"; return; }
+          if (this.phase === "prompt") return insert(this.pr.ed, "dms");
+          a = "dms"; break;
+        case "FACT":
+          if (!R0) return;
+          if (R0.v <= 0 || Math.abs(R0.v - Math.round(R0.v)) > 1e-9 || R0.v > 9999999999) { this.res = { err: Core.err("Math") }; return; }
+          R0.disp = R0.disp === "fact" ? null : "fact"; return;
+        case "MIXED":
+          if (!R0 || !mixedNodes(R0.v)) return;
+          R0.disp = R0.disp === "mixed" ? null : "mixed"; return;
+      }
+      if (this.phase !== "prompt" && (isIns(a) || a === "DEL" || a === "AC")) this.snap();
       if (this.phase === "prompt") {
         const P = this.pr;
         if (a === "AC") { this.pr = null; this.phase = "edit"; this.ed.end(); return; }
@@ -770,7 +858,7 @@
           else { if (this.hi < 0) return; this.hi++; if (this.hi >= H.length) { this.hi = -1; this.ed = new Ed(); this.res = null; this.phase = "edit"; return; } }
           const h = H[this.hi]; this.ed = new Ed(clone(h.e)); this.setRes(h.v, h.d); return;
         }
-        case "SD": if (this.res && !this.res.err) this.res.showDec = !this.res.showDec; return;
+        case "SD": if (this.res && !this.res.err) { this.res.showDec = !this.res.showDec; this.res.disp = null; } return;
         case "CALC": return this.startPrompt("calc");
         case "SOLVE": return this.startPrompt("solve");
         case "RCL": this.phase = "rcl"; return;
@@ -807,7 +895,9 @@
       else if (R && R.solve) {
         out.push($("div", "c-out c-solve", $("span", "c-pl", "x ="), big(R.showDec ? R.de : R.ex)),
           $("div", "c-sub", "L − R = " + Core.fmtPlain(R.lr)));
-      } else if (R) out.push($("div", "c-out", R.label ? $("span", "c-lab", R.label) : null, big(R.showDec ? R.de : R.ex)));
+      } else if (R && R.pair) {
+        out.push($("div", "c-res c-two", R.pair.map(([k, v]) => $("div", "c-rl", $("span", "c-pl", k + " ="), big(valNodes(v, false))))));
+      } else if (R) out.push($("div", "c-out", R.label ? $("span", "c-lab", R.label) : null, big(dispNodes(R))));
       return out;
     },
     hint() {
@@ -1136,6 +1226,38 @@
     });
     if (id === "stat") return choose(["Một biến (x và tần số)", "Hai biến, hồi quy y = a + bx"], "Thống kê", (k) => { app.mods.stat = statMode(k === 1); app.mode = "stat"; });
   }
+  // ---- OPTN, CONST, CONV, RESET ----
+  const CONSTS = [["g · gia tốc trọng trường (m/s²)", 9.80665], ["c · tốc độ ánh sáng (m/s)", 299792458], ["h · hằng số Planck (J·s)", 6.62607015e-34],
+    ["e · điện tích nguyên tố (C)", 1.602176634e-19], ["Nₐ · số Avogadro (mol⁻¹)", 6.02214076e23], ["R · hằng số khí (J/(mol·K))", 8.314462618],
+    ["k · hằng số Boltzmann (J/K)", 1.380649e-23], ["G · hằng số hấp dẫn (N·m²/kg²)", 6.6743e-11], ["mₑ · khối lượng electron (kg)", 9.1093837015e-31]];
+  const CONVS = [["in → cm", (v) => v * 2.54], ["cm → in", (v) => v / 2.54], ["ft → m", (v) => v * 0.3048], ["m → ft", (v) => v / 0.3048],
+    ["mile → km", (v) => v * 1.609344], ["km → mile", (v) => v / 1.609344], ["lb → kg", (v) => v * 0.45359237], ["°F → °C", (v) => (v - 32) * 5 / 9], ["°C → °F", (v) => v * 9 / 5 + 32]];
+  const note = (t) => { app.note = t; };
+  function valToNodes(v) {
+    const a = Math.abs(v);
+    if (a >= 1e6 || (a < 1e-3 && a > 0)) { const [m, e] = v.toExponential().split("e"); return Core.chars(m.replace("-", "−")).concat(["×10", Core.mk("pow", { a: Core.chars(String(+e).replace("-", "−")) })]); }
+    return Core.chars(String(v).replace("-", "−"));
+  }
+  function special(a) {
+    if (a === "RESET") return choose(["Xoá các biến A–F, M, x, y, z", "Đặt lại tất cả: cài đặt, biến, Ans, lịch sử"], "RESET", (i) => {
+      Object.keys(S.vars).forEach((k) => (S.vars[k] = 0));
+      if (i === 1) { S.ans = 0; S.preAns = 0; S.hist = []; S.ang = "D"; S.exact = true; comp.ed = new Ed(); comp.res = null; comp.phase = "edit"; comp.undo = []; }
+      persist(); note(i ? "Đã đặt lại toàn bộ máy tính." : "Đã xoá bộ nhớ các biến.");
+    });
+    if (app.mode !== "comp") return note("Phím này dùng trong chế độ Tính toán (MENU → 1).");
+    if (a === "OPTN") return choose(["sinh", "cosh", "tanh", "sinh⁻¹", "cosh⁻¹", "tanh⁻¹"], "OPTN · Hàm hyperbolic", (i) => comp.key(["sinh", "cosh", "tanh", "asinh", "acosh", "atanh"][i]));
+    if (a === "CONST") return choose(CONSTS.map((c) => c[0]), "CONST · Hằng số khoa học", (i) => {
+      if (comp.phase === "res" || comp.phase === "rcl") { comp.ed = new Ed(); comp.res = null; comp.phase = "edit"; }
+      comp.snap(); comp.ed.ins(["("].concat(valToNodes(CONSTS[i][1]), [")"]));
+    });
+    if (a === "CONV") return choose(CONVS.map((c) => c[0]), "CONV · Đổi đơn vị", (i) => {
+      let v;
+      if (comp.phase === "res" && comp.res && !comp.res.err && comp.res.v != null) v = comp.res.v;
+      else if (!comp.ed.empty()) { comp.run(); if (!comp.res || comp.res.err) return; v = comp.res.v; }
+      else v = S.ans;
+      const out = CONVS[i][1](v); S.preAns = S.ans; S.ans = out; comp.setRes(out, true, CONVS[i][0]); persist();
+    });
+  }
   function setupMenu() {
     choose(["Đơn vị góc: độ (D)" + (S.ang === "D" ? "  ✓" : ""), "Đơn vị góc: radian (R)" + (S.ang === "R" ? "  ✓" : ""),
       "Kết quả dạng chính xác (phân số, căn)" + (S.exact ? "  ✓" : ""), "Kết quả dạng thập phân" + (!S.exact ? "  ✓" : "")], "Cài đặt", (k) => {
@@ -1172,9 +1294,9 @@
       const c = lcd.querySelector(".m-cur"); const line = c && c.closest(".c-line, .c-cell, .c-fr");
       if (c && line) { const lr = line.getBoundingClientRect(), cr = c.getBoundingClientRect(); if (cr.right > lr.right - 8) line.scrollLeft += cr.right - lr.right + 24; if (cr.left < lr.left + 8) line.scrollLeft -= lr.left - cr.left + 24; }
     }
-    hintEl.textContent = hint;
-    el.querySelectorAll(".k-shift").forEach((b) => b.classList.toggle("on", S.shift));
-    el.querySelectorAll(".k-alpha").forEach((b) => b.classList.toggle("on", S.alpha));
+    hintEl.textContent = app.note || hint; app.note = null;
+    el.querySelectorAll(".kr.k-shift").forEach((b) => b.classList.toggle("on", S.shift));
+    el.querySelectorAll(".kr.k-alpha").forEach((b) => b.classList.toggle("on", S.alpha));
     el.classList.toggle("is-shift", S.shift); el.classList.toggle("is-alpha", S.alpha);
   }
   function press(k) {
@@ -1194,6 +1316,8 @@
     if (a === "OFF") return close();
     if (a === "MENU") { app.menu = app.menu && app.menu.home ? null : { home: true }; return draw(); }
     if (a === "SETUP") { setupMenu(); return draw(); }
+    if (a === "ON") { app.menu = null; S.sto = false; const M = app.mods[app.mode]; if (M && M.key) M.key("AC"); return draw(); }
+    if (a === "OPTN" || a === "CONST" || a === "CONV" || a === "RESET") { special(a); return draw(); }
     if (app.menu) {
       const m = app.menu;
       const d = /^d(\d)$/.exec(a);
@@ -1213,26 +1337,35 @@
     const screen = $("div", "khc-screen", ind, lcd, hintEl);
     const mkKey = (k, cls) => {
       const wrap = $("div", "kw " + (cls || ""));
-      const top = $("div", "kt", $("span", "kt-s", k.sh ? keyLabel(k.sh) : ""), $("span", "kt-a", k.al ? keyLabel(k.al) : ""));
+      const side = k.al ? $("span", "kt-a", keyLabel(k.al)) : k.bl ? $("span", "kt-b", k.bl) : $("span", "kt-a", "");
+      const top = $("div", "kt", $("span", "kt-s", k.sh ? keyLabel(k.sh) : ""), side);
       const b = $("button", "k " + k.cls, keyLabel(k.main)); b.type = "button";
-      b.setAttribute("aria-label", k.main.replace(/▫/g, ""));
+      b.setAttribute("aria-label", k.main.replace(/▫/g, "").replace("•", "dấu chấm"));
       b.addEventListener("pointerdown", (e) => { e.preventDefault(); el.focus({ preventScroll: true }); b.classList.add("down"); });
       ["pointerup", "pointerleave", "pointercancel"].forEach((t) => b.addEventListener(t, () => b.classList.remove("down")));
       b.addEventListener("click", () => press(k));
       wrap.append(top, b); return wrap;
     };
-    const top = $("div", "khc-top");
-    const sh = $("button", "k k-shift", "SHIFT"); sh.type = "button"; sh.addEventListener("click", () => { S.shift = !S.shift; S.alpha = false; draw(); });
-    const al = $("button", "k k-alpha", "ALPHA"); al.type = "button"; al.addEventListener("click", () => { S.alpha = !S.alpha; S.shift = false; draw(); });
+    // phím tròn: SHIFT, ALPHA, MENU (SETUP), ON — nhãn in phía trên như máy thật
+    const rnd = (lab, sub, cls, aria, fn) => {
+      const b = $("button", "kr " + cls); b.type = "button"; b.setAttribute("aria-label", aria); b.addEventListener("click", fn);
+      b.addEventListener("pointerdown", (e) => { e.preventDefault(); el.focus({ preventScroll: true }); });
+      return $("div", "kw kw-r", $("div", "kt kt-r", $("span", "kr-l " + cls + "-l", lab), sub ? $("span", "kt-s", sub) : null), b);
+    };
+    const sh = rnd("SHIFT", "", "k-shift", "SHIFT", () => { S.shift = !S.shift; S.alpha = false; draw(); });
+    const al = rnd("ALPHA", "", "k-alpha", "ALPHA", () => { S.alpha = !S.alpha; S.shift = false; draw(); });
+    const menu = rnd("MENU", "SETUP", "k-menu", "MENU, SHIFT MENU là SETUP", () => { const s2 = S.shift; S.shift = S.alpha = false; act(s2 ? "SETUP" : "MENU"); });
+    const on = rnd("ON", "", "k-on", "ON", () => { S.shift = S.alpha = false; act("ON"); });
     const pad = $("div", "khc-pad");
-    [["U", "▲", "Lên"], ["L", "◀", "Trái"], ["R", "▶", "Phải"], ["D", "▼", "Xuống"]].forEach(([a, t, lab]) => { const b = $("button", "pd pd-" + a, t); b.type = "button"; b.setAttribute("aria-label", lab); b.addEventListener("click", () => { S.shift = S.alpha = false; S.sto = false; act(a); }); pad.append(b); });
-    const menu = $("button", "k k-menu", "MENU"); menu.type = "button"; menu.addEventListener("click", () => { const s = S.shift; S.shift = S.alpha = false; act(s ? "SETUP" : "MENU"); });
-    const menuW = $("div", "kw kw-menu", $("div", "kt", $("span", "kt-s", "SETUP"), $("span", "kt-a", "")), menu);
-    const shW = $("div", "kw", $("div", "kt", ""), sh), alW = $("div", "kw", $("div", "kt", ""), al);
-    top.append($("div", "khc-tl", shW, alW), pad, $("div", "khc-tr", menuW));
+    [["U", "Lên"], ["L", "Trái"], ["R", "Phải"], ["D", "Xuống"]].forEach(([a, lab]) => { const b = $("button", "pd pd-" + a); b.type = "button"; b.setAttribute("aria-label", lab); b.addEventListener("click", () => { S.shift = S.alpha = false; S.sto = false; act(a); }); pad.append(b); });
+    pad.append($("span", "pd-c"));
+    const head = $("div", "khc-head",
+      $("div", "khc-hs", $("div", "khc-rr", sh, al), $("div", "khc-pair", KEYS_L.map((k) => mkKey(k)))),
+      pad,
+      $("div", "khc-hs", $("div", "khc-rr", menu, on), $("div", "khc-pair", KEYS_R.map((k) => mkKey(k)))));
     const fn = $("div", "khc-fn", KEYS_FN.map((k) => mkKey(k)));
     const nm = $("div", "khc-num", KEYS_NUM.map((k) => mkKey(k)));
-    const body = $("div", "khc-body", $("div", "khc-brand", $("b", "", "Kiến Học"), $("span", "", "máy tính khoa học")), screen, top, fn, nm);
+    const body = $("div", "khc-body", $("div", "khc-brand", $("b", "", "Kiến Học"), $("span", "", "máy tính khoa học")), screen, head, fn, nm);
     el.append(bar, body);
     // bàn phím máy tính
     const KB = { "0": "d0", "1": "d1", "2": "d2", "3": "d3", "4": "d4", "5": "d5", "6": "d6", "7": "d7", "8": "d8", "9": "d9", ".": "dot", ",": "comma",
