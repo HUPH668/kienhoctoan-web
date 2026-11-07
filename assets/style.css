@@ -242,6 +242,11 @@ img.fig{max-width:100%;height:auto;background:#fff;border-radius:6px;padding:4px
 .sa input{width:200px;padding:9px 12px;border:1.5px solid var(--line-2);border-radius:var(--r-s);background:var(--surface-2);font-size:17px;font-variant-numeric:tabular-nums}
 .sa input:focus{outline:none;border-color:var(--brand);background:var(--surface)}
 .sa .hint{font-size:13px;color:var(--ink-3)}
+.sa-in{display:flex;align-items:stretch}
+.sa-in .neg{min-width:44px;-webkit-tap-highlight-color:transparent;font-family:inherit;border:1.5px solid var(--line-2);border-right:0;border-radius:var(--r-s) 0 0 var(--r-s);background:var(--surface);color:var(--ink);font-size:20px;font-weight:600;cursor:pointer;line-height:1}
+.sa-in .neg:active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.sa-in .neg:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.sa-in .neg+input{border-radius:0 var(--r-s) var(--r-s) 0}
 .navbox{position:sticky;top:150px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 .navbox h4{margin:0 0 10px;font-size:14px;color:var(--ink-2);font-weight:750}
 .navgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px}

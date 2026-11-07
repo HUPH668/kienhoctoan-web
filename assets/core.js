@@ -399,7 +399,16 @@
     } else {
       const inp = h("input", { type: "text", inputmode: "decimal", value: it.ans ?? "", placeholder: "Nhập đáp số", disabled: mode !== "exam", "aria-label": "Đáp số câu " + (num + 1),
         oninput: (e) => { it.ans = e.target.value; onChange && onChange(it); } });
-      box.append(h("div", { class: "sa" }, inp, mode === "exam" ? h("span", { class: "hint" }, "Số thập phân dùng dấu phẩy hoặc chấm, ví dụ −1,5") : null));
+      // bàn phím số của điện thoại (nhất là iPhone) không có dấu trừ: nút ± đổi dấu
+      const neg = mode === "exam" ? h("button", { type: "button", class: "neg", "aria-label": "Đổi dấu âm/dương câu " + (num + 1),
+        onmousedown: (e) => e.preventDefault(),
+        onclick: () => {
+          const v = inp.value.replace(/^\s+/, "");
+          inp.value = /^[-−]/.test(v) ? v.replace(/^[-−]\s*/, "") : "-" + v;
+          it.ans = inp.value; onChange && onChange(it);
+          if (document.activeElement === inp) { const n = inp.value.length; inp.setSelectionRange(n, n); }
+        } }, "±") : null;
+      box.append(h("div", { class: "sa" }, h("div", { class: "sa-in" }, neg, inp), mode === "exam" ? h("span", { class: "hint" }, "Số âm: bấm ± (hoặc gõ dấu −). Số thập phân dùng dấu phẩy hoặc chấm, ví dụ −1,5") : null));
       if (mode === "review" && hasKey) box.append(h("div", { class: "keyline", html: "Đáp án: <b>" + KT.esc(String(it.key).replace(/\\[dt]?frac\{([^}]*)\}\{([^}]*)\}/g, "$1/$2").replace(/\$/g, "")) + "</b>" }));
     }
     if (mode === "exam" && opt.conf !== false) {
