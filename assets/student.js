@@ -131,6 +131,7 @@
       h("div", { class: "dd-prof" }, h("span", { class: "av lg pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("div", {}, h("b", {}, name), h("small", {}, (cls ? "Lớp " + cls + ", mã " : "Mã ") + sess.code), I ? h("small", {}, "Cấp " + I.L + ", " + I.title + ", " + KT.num(I.xp) + " KN") : null)),
       inExam ? null : [mi("achieve", "Thành tích của em", () => go("achieve")), mi("book", "Sổ câu sai", () => go("book")), mi("tests", "Bài kiểm tra", () => go("tests"))],
       window.KHCalc ? mi("calc", "Máy tính cầm tay", () => window.KHCalc.open()) : null,
+      inExam || !credit ? null : mi("learn", "Điểm làm bài: còn " + credit.credits, creditModal),
       inExam ? null : mi("tests", "Học phí" + (feeOwed().length ? " (" + feeOwed().length + " tháng chưa xong)" : ""), feeModal),
       mi("moon", "Đổi giao diện sáng/tối", () => document.getElementById("themeBtn").click()),
       h("div", { class: "dd-sep" }), mi("out", "Đăng xuất", out));
@@ -271,7 +272,8 @@
       try {
         [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 50, p_token: sess.token }).catch(() => null), loadVids(),
           dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {})),
-          rpc("fee_status").then((f) => (fees = (f && f.rows) || [])).catch(() => (fees = []))]);
+          rpc("fee_status").then((f) => (fees = (f && f.rows) || [])).catch(() => (fees = [])),
+          rpc("my_credits").then((c) => (credit = c)).catch(() => (credit = null))]);
         clockSkew = new Date(home.server_now).getTime() - Date.now();
         if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
         homeAt = Date.now(); liveProm = rpc("live_list").catch(() => []);
@@ -470,6 +472,34 @@
   const mLabel = (m) => { const d = new Date(m + "T00:00:00"); return "Tháng " + (d.getMonth() + 1) + "/" + d.getFullYear(); };
   const dLabel = (m) => { const d = new Date(m + "T00:00:00"); return d.getDate() + "/" + (d.getMonth() + 1); };
   const feeOwed = () => fees.filter((f) => ["late", "partial", "unpaid"].includes(f.status));
+  /* điểm làm bài: mỗi bài tự luyện hoặc đề có sẵn dùng 1 điểm, thầy cô cấp thêm */
+  var credit = null;
+  const creditLine = () => !credit ? "" : credit.credits > 0 ? " Bài này dùng <b>1 điểm làm bài</b> (em còn " + credit.credits + " điểm)." : "";
+  const noCredit = () => credit && credit.credits <= 0;
+  function creditOut() {
+    KT.modal(h("div", { class: "cr-out" }, h("h3", {}, "Em đã dùng hết điểm làm bài"),
+      h("p", {}, "Mỗi bài tự luyện hoặc đề có sẵn cần 1 điểm. Em nhờ thầy cô cấp thêm điểm nhé."),
+      h("p", { class: "sub" }, "Bài thầy cô giao, Ôn câu sai, Nhiệm vụ hôm nay và Bài bổ sung vẫn làm bình thường, không cần điểm.")));
+  }
+  const afterStart = () => { rpc("my_credits").then((c) => (credit = c)).catch(() => { }); };
+  function creditBar() {
+    if (!credit) return null;
+    const n = credit.credits;
+    return h("div", { class: "cr-bar" + (n <= 0 ? " out" : n <= 2 ? " low" : "") },
+      h("div", { class: "cr-n" }, h("b", {}, String(n)), h("span", {}, "điểm làm bài")),
+      h("p", {}, n <= 0 ? "Em đã dùng hết điểm. Em nhờ thầy cô cấp thêm để làm tiếp bài tự luyện và đề có sẵn. Bài thầy cô giao vẫn làm bình thường."
+        : "Mỗi lần bắt đầu một bài tự luyện hoặc một đề có sẵn dùng 1 điểm. Làm tiếp bài đang dở và bài thầy cô giao không mất điểm."),
+      h("button", { class: "btn ghost sm", onclick: creditModal }, "Lịch sử"));
+  }
+  function creditModal() {
+    const log = (credit && credit.log) || [];
+    KT.modal(h("div", { class: "cr-hist" }, h("h3", {}, "Điểm làm bài của em: " + (credit ? credit.credits : 0)),
+      log.length ? h("ul", { class: "cr-list" }, log.map((l) => h("li", {},
+        h("span", { class: "cr-d " + (l.d > 0 ? "up" : "dn") }, (l.d > 0 ? "+" : "") + l.d),
+        h("div", {}, h("b", {}, l.d > 0 ? (l.reason || "Thầy cô cấp thêm") : l.reason || "Bài tự luyện"), h("small", {}, KT.dt(l.at) + ", còn " + l.bal + " điểm")))))
+        : h("p", { class: "sub" }, "Chưa có thay đổi nào."),
+      h("p", { class: "sub" }, "Mỗi bài tự luyện hoặc đề có sẵn dùng 1 điểm. Thầy cô là người cấp thêm điểm.")));
+  }
   function feeModal() {
     KT.modal(h("div", { class: "fee-st" }, h("h3", {}, "Học phí của em"),
       fees.length ? h("ul", { class: "fee-list" }, fees.map((f) => h("li", {},
@@ -669,6 +699,7 @@
   }
   function viewLearn(w) {
     w.append(secHead("Tự luyện", "Chọn khối lớp rồi chọn dạng đề. Mỗi lần làm em nhận một đề khác nhau."));
+    const cb = creditBar(); if (cb) w.append(cb);
     w.append(h("div", { class: "grades", role: "tablist" }, [6, 7, 8, 9, 10, 11, 12].map((x) => h("button", {
       class: "grade" + (x === grade ? " on" : ""), disabled: !CUR[x], role: "tab", "aria-selected": String(x === grade),
       onclick: () => { grade = x; store.set("kt_grade", x); renderHome("learn", { cache: true }); } }, "Lớp " + x, !CUR[x] ? h("small", {}, "sắp có") : null))));
@@ -731,13 +762,14 @@
     const bp = { paper: p.id, kind: "Luyện đề", title: p.title, grade: p.g };
     const go = async () => {
       delete paperCache[p.g];
-      try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(r); }
+      try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; afterStart(); startExam(r); }
       catch (e) { fail(e); }
     };
     if (p.doing) return go();
+    if (noCredit()) return creditOut();
     const c = p.counts || {};
     KT.confirm(p.title, "Đề gồm <b>" + p.n + " câu</b>" + (c.TF || c.SA ? " (" + [c.MC ? c.MC + " trắc nghiệm" : "", c.TF ? c.TF + " đúng/sai" : "", c.SA ? c.SA + " trả lời ngắn" : ""].filter(Boolean).join(", ") + ")" : "")
-      + ", làm trong <b>" + p.minutes + " phút</b>. Câu hỏi và phương án giữ đúng thứ tự như đề gốc. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng.", "Bắt đầu", go);
+      + ", làm trong <b>" + p.minutes + " phút</b>. Câu hỏi và phương án giữ đúng thứ tự như đề gốc. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng." + creditLine(), "Bắt đầu", go);
   }
 
   /* ----- Sổ câu sai ----- */
@@ -1141,11 +1173,12 @@
   }
   function startDgnl(bp) {
     const go = async () => {
-      try { const p = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(p); }
+      try { const p = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; afterStart(); startExam(p); }
       catch (e) { fail(e); }
     };
+    if (noCredit()) return creditOut();
     KT.confirm(bp.title, "Đề gồm <b>" + bp.counts.MC + " câu trắc nghiệm</b> (" + esc(KT.bpScope(bp)) + "), làm trong <b>" + bp.minutes + " phút</b>. "
-      + "Mỗi lần thi em nhận một đề khác nhau. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng.", "Bắt đầu", go);
+      + "Mỗi lần thi em nhận một đề khác nhau. Đồng hồ vẫn chạy nếu em thoát ra giữa chừng." + creditLine(), "Bắt đầu", go);
   }
   function improveBp(keys, extra) {
     const g = +keys[0].split("-")[0], one = keys.length === 1;
@@ -1172,6 +1205,7 @@
 
   /* ---------------- cấu hình đề tự luyện ---------------- */
   function setup(bp) {
+    if (noCredit()) return creditOut();
     const av = countsFor(bp.levels ? [] : bp.lessons);
     const avail = bp.levels ? null : av;
     const base = avail ? KT.fitCounts(bp.counts, avail) : bp.counts;
@@ -1184,6 +1218,7 @@
     let close;
     close = KT.modal([h("h3", {}, bp.title), h("p", {}, KT.bpScope(bp)),
       short.length ? h("div", { class: "note" }, "Ngân hàng chưa đủ câu cho cấu trúc chuẩn — đề dùng số câu đang có.") : null,
+      credit ? h("p", { class: "sub cr-note", html: creditLine() }) : null,
       h("div", { class: "grid3" }, fld("MC"), fld("TF"), fld("SA")),
       h("div", { style: "max-width:160px" }, h("label", { for: "nMin" }, "Thời gian (phút)"), minIn),
       h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
@@ -1192,7 +1227,7 @@
           if (!c.MC && !c.TF && !c.SA) return;
           e.target.disabled = true;
           const b2 = Object.assign({}, bp, { counts: c, minutes: Math.max(5, Math.min(180, parseInt(minIn.value || bp.minutes, 10))) });
-          try { const p = await rpc("start_attempt", { p_blueprint: b2 }); close(); lastCtx = { bp }; startExam(p); }
+          try { const p = await rpc("start_attempt", { p_blueprint: b2 }); close(); lastCtx = { bp }; afterStart(); startExam(p); }
           catch (ex) { e.target.disabled = false; if (ex.data && ex.data.remedial) { close(); remErr(ex); } else fail(ex); }
         } }, "Bắt đầu làm bài"))]);
   }
@@ -1468,7 +1503,8 @@
       lastCtx && lastCtx.bp && lastCtx.bp.paper ? h("button", { class: "btn ghost sm", onclick: () => go("learn") }, "Chọn đề khác") : null,
       lastCtx && lastCtx.bp && lastCtx.bp.paper ? h("button", { class: "btn sm", onclick: async (e) => {
         e.currentTarget.disabled = true; const bp = lastCtx.bp; delete paperCache[bp.grade];
-        try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; startExam(r); } catch (ex) { e.target.disabled = false; fail(ex); } } }, "Làm lại đề này") : null,
+        if (noCredit()) { e.target.disabled = false; return creditOut(); }
+        try { const r = await rpc("start_attempt", { p_blueprint: bp }); lastCtx = { bp }; afterStart(); startExam(r); } catch (ex) { e.target.disabled = false; fail(ex); } } }, "Làm lại đề này") : null,
       lastCtx && lastCtx.bp && !lastCtx.bp.paper ? h("button", { class: "btn sm", onclick: () => (lastCtx.bp.exam ? startDgnl(lastCtx.bp) : setup(lastCtx.bp)) }, "Làm đề khác cùng loại") : null));
     if (auto) w.append(h("div", { class: "note" }, "Hết giờ — bài đã được nộp tự động."));
     const nRv = p.items.filter((x) => x.rv), nWrong = p.items.filter((x) => !x.rv && (x.status === "bad" || x.status === "part")).length;

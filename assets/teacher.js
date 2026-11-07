@@ -104,7 +104,7 @@
     const w = h("section", { class: "wrap" });
     const admin = !!(ov.me && ov.me.role === "admin");
     const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)],
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)], ["credits", "Điểm làm bài"],
       admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["fees", "Học phí"], ["gate", "Video đầu giờ"],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
@@ -112,7 +112,7 @@
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
   }
 
   // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
@@ -454,6 +454,72 @@
     return i;
   };
   let feeMonth = mFirst(new Date()), feeClass = "", feeFilter = "all", feeQ = "";
+  /* ---------------- ĐIỂM LÀM BÀI: mỗi bài tự luyện / đề có sẵn của học sinh dùng 1 điểm ---------------- */
+  let crClass = "", crQ = "";
+  async function tabCredits(el) {
+    el.innerHTML = "";
+    let rows;
+    try { rows = await T("t_credits", { p_class: crClass ? +crClass : null }); } catch (e) { fail(e); return; }
+    const picked = new Set();
+    el.append(h("div", { class: "note" }, "Mỗi lần học sinh bắt đầu một bài tự luyện (mục Học tập) hoặc một đề có sẵn sẽ bị trừ 1 điểm; làm tiếp bài đang dở không bị trừ. "
+      + "Bài thầy cô giao, Ôn câu sai, Nhiệm vụ hôm nay và Bài bổ sung không dùng điểm. Hết điểm thì em không mở được bài tự luyện mới."));
+    const sel = h("select", { "aria-label": "Lọc theo lớp", onchange: (e) => { crClass = e.target.value; tabCredits(el); } }, h("option", { value: "" }, "Tất cả lớp"),
+      ov.classes.map((c) => h("option", { value: String(c.id), selected: String(c.id) === crClass }, c.name + " (" + c.n + " HS)")));
+    const q = h("input", { type: "search", placeholder: "Tìm tên hoặc mã học sinh", value: crQ, "aria-label": "Tìm học sinh" });
+    const amt = h("input", { type: "number", value: 10, min: -1000, max: 1000, "aria-label": "Số điểm cấp", style: "width:90px" });
+    const pickInfo = h("span", { class: "sub" });
+    const giveSel = h("button", { class: "btn sm", disabled: true, onclick: () => give([...picked], +amt.value, "Cấp cho " + picked.size + " em") }, "Cấp cho các em đã chọn");
+    const giveAll = h("button", { class: "btn ghost sm", onclick: () => { const ids = shown().map((r) => r.id); if (!ids.length) return;
+      KT.confirm("Cấp điểm cho " + ids.length + " em?", "Mỗi em " + (+amt.value > 0 ? "được cộng " : "bị trừ ") + "<b>" + Math.abs(+amt.value) + " điểm</b>.", "Cấp điểm", () => give(ids, +amt.value, "")); } }, "Cấp cho cả danh sách");
+    const tot = rows.reduce((a, r) => a + r.credits, 0), out = rows.filter((r) => r.credits <= 0).length, used = rows.reduce((a, r) => a + r.used, 0);
+    const kpi = (n, l, cls) => h("div", { class: "kpi " + (cls || "") }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
+    el.append(h("div", { class: "kpis" }, kpi(rows.length, "Học sinh"), kpi(KT.num(tot), "Tổng điểm còn lại"), kpi(KT.num(used), "Điểm đã dùng"), kpi(out, "Em đã hết điểm", out ? "warn" : "")));
+    el.append(h("div", { class: "fee-filter cr-tools" }, sel, q, h("span", { class: "cr-amt" }, h("label", {}, "Số điểm"), amt), giveSel, giveAll, pickInfo));
+    const tbody = h("tbody");
+    const all = h("input", { type: "checkbox", "aria-label": "Chọn tất cả", onchange: (e) => { shown().forEach((r) => (e.target.checked ? picked.add(r.id) : picked.delete(r.id))); draw(); } });
+    el.append(h("div", { class: "tbl-wrap" }, h("table", { class: "tbl cr-tbl" }, h("thead", {}, h("tr", {}, h("th", {}, all), h("th", {}, "Học sinh"), h("th", {}, "Lớp"),
+      h("th", { class: "r" }, "Còn lại"), h("th", { class: "r" }, "Đã dùng"), h("th", {}, "Dùng gần nhất"), h("th", {}, ""))), tbody)));
+    const fold = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase();
+    const shown = () => { const k = fold(crQ); return rows.filter((r) => !k || fold(r.name).includes(k) || r.code.toLowerCase().includes(k)); };
+    q.addEventListener("input", () => { crQ = q.value; draw(); });
+    async function give(ids, d, note) {
+      if (!ids.length) return KT.toast("Chưa chọn học sinh nào.", "bad");
+      if (!d || Math.abs(d) > 1000) return KT.toast("Nhập số điểm khác 0 (có thể âm để bớt).", "bad");
+      try { const r = await T("t_credit_give", { p_ids: ids, p_delta: Math.round(d), p_note: note || "" }); KT.toast((d > 0 ? "Đã cấp " : "Đã bớt ") + Math.abs(d) + " điểm cho " + r.n + " em", "ok"); tabCredits(el); }
+      catch (e) { fail(e); }
+    }
+    function customModal(r) {
+      const n = h("input", { type: "number", id: "crN", value: 10, min: -1000, max: 1000 }), note = h("input", { id: "crNote", placeholder: "VD: Thưởng tuần học tốt" });
+      let close; close = KT.modal([h("h3", {}, "Điểm làm bài · " + r.name), h("p", { class: "sub" }, "Em đang còn " + r.credits + " điểm. Nhập số âm để bớt điểm."),
+        h("div", { class: "form" }, h("div", {}, h("label", { for: "crN" }, "Số điểm cộng thêm"), n), h("div", {}, h("label", { for: "crNote" }, "Ghi chú (không bắt buộc)"), note)),
+        h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"), h("button", { class: "btn", onclick: () => { close(); give([r.id], +n.value, note.value.trim()); } }, "Lưu"))]);
+    }
+    async function histModal(r) {
+      let log; try { log = await T("t_credit_log", { p_student: r.id }); } catch (e) { return fail(e); }
+      KT.modal(h("div", { class: "cr-hist" }, h("h3", {}, r.name + " · còn " + r.credits + " điểm"),
+        log.length ? h("ul", { class: "cr-list" }, log.map((l) => h("li", {}, h("span", { class: "cr-d " + (l.d > 0 ? "up" : "dn") }, (l.d > 0 ? "+" : "") + l.d),
+          h("div", {}, h("b", {}, l.reason || (l.d > 0 ? "Cấp thêm" : "Bài tự luyện")), h("small", {}, KT.dt(l.at) + (l.by ? ", " + l.by : "") + ", còn " + l.bal + " điểm")))))
+          : h("p", { class: "sub" }, "Chưa có thay đổi nào.")), { wide: false });
+    }
+    function draw() {
+      tbody.innerHTML = "";
+      const list = shown();
+      list.forEach((r) => {
+        const cb = h("input", { type: "checkbox", checked: picked.has(r.id), "aria-label": "Chọn " + r.name, onchange: (e) => { e.target.checked ? picked.add(r.id) : picked.delete(r.id); upd(); } });
+        tbody.append(h("tr", { class: r.credits <= 0 ? "cr-out" : "" }, h("td", {}, cb), h("td", {}, h("b", {}, r.name), h("div", { class: "sub mono" }, r.code)), h("td", {}, r.class || ""),
+          h("td", { class: "r" }, h("span", { class: "cr-left" + (r.credits <= 0 ? " out" : r.credits <= 2 ? " low" : "") }, String(r.credits))),
+          h("td", { class: "r" }, String(r.used)), h("td", {}, r.last ? KT.dt(r.last) : h("span", { class: "sub" }, "Chưa dùng")),
+          h("td", { class: "cr-act" }, h("button", { class: "btn ghost sm", onclick: () => give([r.id], 5, "") }, "+5"), h("button", { class: "btn ghost sm", onclick: () => give([r.id], 10, "") }, "+10"),
+            h("button", { class: "btn ghost sm", onclick: () => customModal(r) }, "Khác…"), h("button", { class: "linkbtn", onclick: () => histModal(r) }, "Lịch sử"))));
+      });
+      if (!list.length) tbody.append(h("tr", {}, h("td", { colspan: 7, class: "empty" }, rows.length ? "Không có học sinh nào khớp." : "Lớp chưa có học sinh.")));
+      all.checked = list.length > 0 && list.every((r) => picked.has(r.id));
+      upd();
+    }
+    function upd() { giveSel.disabled = !picked.size; pickInfo.textContent = picked.size ? "Đã chọn " + picked.size + " em" : ""; }
+    draw();
+  }
+
   async function tabFees(el) {
     el.innerHTML = "";
     let d, classes;
