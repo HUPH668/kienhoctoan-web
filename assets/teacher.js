@@ -105,14 +105,14 @@
     const admin = !!(ov.me && ov.me.role === "admin");
     const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
     const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)],
-      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["gate", "Video đầu giờ"],
+      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["fees", "Học phí"], ["gate", "Video đầu giờ"],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
     w.append(dashHead());
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, gate: tabGate, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, reports: tabReports, live: tabLive, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
   }
 
   // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
@@ -438,6 +438,208 @@
 
   /* ---------------- VIDEO ÔN TẬP ---------------- */
   let vidGrade = null;
+  // ===== học phí hàng tháng =====
+  const FEE_ST = { paid: "Đã đóng", partial: "Đóng thiếu", late: "Quá hạn", unpaid: "Chưa đóng", free: "Miễn", nofee: "Chưa đặt mức" };
+  const vnd = (n) => KT.num(n || 0) + " đ";
+  const ymd = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const mFirst = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+  const mName = (m) => { const d = new Date(m + "T00:00:00"); return "Tháng " + (d.getMonth() + 1) + "/" + d.getFullYear(); };
+  const dShort = (s) => { const d = new Date(s + "T00:00:00"); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear(); };
+  const ADJ = { pct: "Giảm theo %", amt: "Giảm số tiền", fixed: "Mức riêng", free: "Miễn học phí" };
+  const adjText = (a) => !a ? "" : a.kind === "pct" ? "Giảm " + a.value + "%" : a.kind === "amt" ? "Giảm " + vnd(a.value) : a.kind === "fixed" ? "Mức riêng " + vnd(a.value) : "Miễn học phí";
+  const moneyInput = (id, v) => {
+    const i = h("input", { id, type: "text", inputmode: "numeric", value: v ? KT.num(v) : "", placeholder: "0", autocomplete: "off" });
+    i.addEventListener("input", () => { const n = +i.value.replace(/\D/g, ""); i.value = n ? KT.num(n) : ""; });
+    i.num = () => +String(i.value).replace(/\D/g, "") || 0;
+    return i;
+  };
+  let feeMonth = mFirst(new Date()), feeClass = "", feeFilter = "all", feeQ = "";
+  async function tabFees(el) {
+    el.innerHTML = "";
+    let d, classes;
+    try { [d, classes] = await Promise.all([T("t_fee_month", { p_month: ymd(feeMonth) }), T("t_fee_classes")]); } catch (e) { fail(e); return; }
+    const rows = d.rows || [];
+    const noFee = classes.filter((c) => c.n && !c.amount);
+    const nav = h("div", { class: "fee-nav" },
+      h("button", { class: "btn ghost sm", "aria-label": "Tháng trước", onclick: () => { feeMonth = new Date(feeMonth.getFullYear(), feeMonth.getMonth() - 1, 1); tabFees(el); } }, "‹"),
+      h("b", { class: "fee-m" }, mName(ymd(feeMonth))),
+      h("button", { class: "btn ghost sm", "aria-label": "Tháng sau", onclick: () => { feeMonth = new Date(feeMonth.getFullYear(), feeMonth.getMonth() + 1, 1); tabFees(el); } }, "›"),
+      ymd(feeMonth) !== ymd(mFirst(new Date())) ? h("button", { class: "btn ghost sm", onclick: () => { feeMonth = mFirst(new Date()); tabFees(el); } }, "Tháng này") : null,
+      h("span", { class: "fee-sp" }),
+      h("button", { class: "btn ghost sm", onclick: () => feeClassModal(classes, () => tabFees(el)) }, "Cài học phí các lớp"),
+      h("button", { class: "btn ghost sm", onclick: () => feeExcel(rows) }, "Xuất Excel"));
+    el.append(nav);
+    if (noFee.length) el.append(h("div", { class: "note" }, "Lớp chưa đặt mức học phí: " + noFee.map((c) => c.name).join(", ") + ". ",
+      h("button", { class: "linkbtn", onclick: () => feeClassModal(classes, () => tabFees(el)) }, "Đặt mức ngay")));
+    // số liệu tháng
+    const inCls = rows.filter((r) => !feeClass || String(r.class_id) === feeClass);
+    const bill = inCls.filter((r) => r.status !== "nofee");
+    const exp = bill.reduce((a, r) => a + r.amount, 0), got = bill.reduce((a, r) => a + Math.min(r.paid, r.amount || r.paid), 0);
+    const paidN = bill.filter((r) => r.status === "paid" || r.status === "free").length, lateN = bill.filter((r) => r.status === "late").length;
+    const kpi = (n, l, cls) => h("div", { class: "kpi " + (cls || "") }, h("div", { class: "n" }, n), h("div", { class: "l" }, l));
+    el.append(h("div", { class: "kpis fee-kpis" }, kpi(vnd(exp), "Phải thu"), kpi(vnd(got), "Đã thu", "ok"), kpi(vnd(Math.max(0, exp - got)), "Còn phải thu", exp - got > 0 ? "warn" : ""),
+      kpi(paidN + "/" + bill.length, "Em đã đóng đủ" + (lateN ? ", " + lateN + " em quá hạn" : ""))));
+    // bộ lọc
+    const sel = h("select", { "aria-label": "Lọc theo lớp", onchange: (e) => { feeClass = e.target.value; tabFees(el); } }, h("option", { value: "" }, "Tất cả lớp"),
+      classes.map((c) => h("option", { value: String(c.id), selected: String(c.id) === feeClass }, c.name)));
+    const q = h("input", { type: "search", placeholder: "Tìm tên hoặc mã học sinh", value: feeQ, "aria-label": "Tìm học sinh" });
+    const chips = h("div", { class: "chips" }, [["all", "Tất cả"], ["owe", "Chưa đóng đủ"], ["late", "Quá hạn"], ["paid", "Đã đóng"]].map(([k, l]) =>
+      h("button", { class: "chip" + (feeFilter === k ? " on" : ""), onclick: () => { feeFilter = k; draw(); chips.querySelectorAll(".chip").forEach((b, i) => b.classList.toggle("on", ["all", "owe", "late", "paid"][i] === k)); } }, l)));
+    el.append(h("div", { class: "fee-filter" }, sel, q, chips));
+    const tbody = h("tbody");
+    const table = h("div", { class: "tbl-wrap" }, h("table", { class: "tbl fee-tbl" }, h("thead", {}, h("tr", {}, h("th", {}, "Học sinh"), h("th", {}, "Lớp"), h("th", { class: "r" }, "Học phí"), h("th", { class: "r" }, "Đã đóng"), h("th", {}, "Trạng thái"), h("th", {}, ""))), tbody));
+    el.append(table);
+    q.addEventListener("input", () => { feeQ = q.value; draw(); });
+    function draw() {
+      tbody.innerHTML = "";
+      const fold = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); const k = fold(feeQ);
+      const list = inCls.filter((r) => (feeFilter === "all" || (feeFilter === "owe" && ["unpaid", "late", "partial"].includes(r.status)) || (feeFilter === "late" && r.status === "late") || (feeFilter === "paid" && ["paid", "free"].includes(r.status)))
+        && (!k || (fold(r.name).includes(k) || r.code.toLowerCase().includes(k))));
+      if (!list.length) { tbody.append(h("tr", {}, h("td", { colspan: 6, class: "empty" }, rows.length ? "Không có học sinh nào khớp bộ lọc." : "Chưa có học sinh nào trong các lớp của thầy."))); return; }
+      list.forEach((r) => {
+        const left = Math.max(0, r.amount - r.paid);
+        tbody.append(h("tr", { class: "fs-row fs-" + r.status },
+          h("td", {}, h("b", {}, r.name), h("small", { class: "sub" }, " " + r.code), r.adj ? h("div", { class: "fee-adj" }, adjText(r.adj)) : null),
+          h("td", {}, r.class || "–"),
+          h("td", { class: "r" }, r.status === "nofee" ? "–" : vnd(r.amount), r.manual ? h("small", { class: "sub", title: "Thầy đã sửa tay" }, " ✎") : null),
+          h("td", { class: "r" }, r.paid ? vnd(r.paid) : "–", r.last ? h("div", { class: "sub" }, dShort(r.last)) : null),
+          h("td", {}, h("span", { class: "fee-badge fs-" + r.status }, FEE_ST[r.status]), left && r.status !== "nofee" ? h("div", { class: "sub" }, "Còn " + vnd(left)) : null),
+          h("td", { class: "fee-act" },
+            left > 0 && r.status !== "nofee" ? h("button", { class: "btn sm", onclick: () => feePayModal(r, () => tabFees(el)) }, "Thu tiền") : null,
+            h("button", { class: "btn ghost sm", onclick: () => feeRowModal(r, () => tabFees(el)) }, r.pays.length ? "Chi tiết" : "Sửa"))));
+      });
+    }
+    draw();
+    el.append(await feeReport());
+  }
+  function feeClassModal(classes, done) {
+    let close;
+    const rowsEl = classes.map((c) => {
+      const a = moneyInput("fa" + c.id, c.amount), dd = h("input", { type: "number", min: 1, max: 28, value: c.due_day, "aria-label": "Hạn đóng lớp " + c.name });
+      return { c, a, dd, el: h("tr", {}, h("td", {}, h("b", {}, c.name), h("small", { class: "sub" }, " " + c.n + " em")), h("td", {}, a), h("td", {}, dd)) };
+    });
+    close = KT.modal(h("div", {}, h("h3", {}, "Học phí các lớp"),
+      h("p", { class: "sub" }, "Mức học phí mỗi tháng của từng lớp. Em nào được giảm hay miễn thì thầy chỉnh riêng ở nút Sửa của em đó. Đổi mức thì các phiếu tháng này chưa thu đồng nào sẽ tự tính lại."),
+      h("div", { class: "tbl-wrap" }, h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, "Lớp"), h("th", {}, "Học phí/tháng (đ)"), h("th", {}, "Hạn đóng (ngày)"))), h("tbody", {}, rowsEl.map((x) => x.el)))),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async () => {
+          try {
+            for (const x of rowsEl) if (x.a.num() !== x.c.amount || +x.dd.value !== x.c.due_day) await T("t_fee_class_set", { p_class: x.c.id, p_amount: x.a.num(), p_due: +x.dd.value || 10 });
+            close(); KT.toast("Đã lưu học phí các lớp", "ok"); done();
+          } catch (e) { fail(e); }
+        } }, "Lưu"))), { wide: true });
+  }
+  function feePayModal(r, done) {
+    let close;
+    const left = Math.max(0, r.amount - r.paid);
+    const amt = moneyInput("fpA", left), on = h("input", { id: "fpD", type: "date", value: ymd(new Date()) });
+    const met = h("select", { id: "fpM" }, h("option", { value: "cash" }, "Tiền mặt"), h("option", { value: "bank" }, "Chuyển khoản"));
+    const note = h("input", { id: "fpN", maxlength: 200, placeholder: "Không bắt buộc" });
+    close = KT.modal(h("div", {}, h("h3", {}, "Thu học phí: " + r.name),
+      h("p", { class: "sub" }, mName(String(d0(r))) + ". Học phí " + vnd(r.amount) + (r.paid ? ", đã đóng " + vnd(r.paid) : "") + ", còn " + vnd(left) + "."),
+      h("div", { class: "form" },
+        h("div", {}, h("label", { for: "fpA" }, "Số tiền nhận (đ)"), amt), h("div", {}, h("label", { for: "fpD" }, "Ngày nhận"), on),
+        h("div", {}, h("label", { for: "fpM" }, "Hình thức"), met), h("div", {}, h("label", { for: "fpN" }, "Ghi chú"), note)),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Huỷ"),
+        h("button", { class: "btn", onclick: async () => {
+          if (amt.num() <= 0) { KT.toast("Nhập số tiền nhận", "bad"); return; }
+          try { const rc = await T("t_fee_pay", { p_bill: r.bill, p_amount: amt.num(), p_on: on.value || null, p_method: met.value, p_note: note.value.trim() }); close(); done(); receiptModal(rc); }
+          catch (e) { fail(e); }
+        } }, "Ghi nhận và lập biên nhận"))));
+  }
+  const d0 = (r) => ymd(feeMonth);
+  function feeRowModal(r, done) {
+    let close;
+    const amt = moneyInput("fbA", r.amount), note = h("input", { id: "fbN", maxlength: 200, value: r.note || "", placeholder: "Không bắt buộc" });
+    const kind = h("select", { id: "fjK" }, h("option", { value: "none" }, "Không giảm"), Object.keys(ADJ).map((k) => h("option", { value: k, selected: r.adj && r.adj.kind === k }, ADJ[k])));
+    const val = h("input", { id: "fjV", type: "text", inputmode: "numeric", value: r.adj && r.adj.kind !== "free" ? KT.num(r.adj.value) : "", placeholder: "VD: 20 (%) hoặc 100.000 (đ)" });
+    const jn = h("input", { id: "fjN", maxlength: 200, value: (r.adj && r.adj.note) || "", placeholder: "VD: anh chị em cùng học" });
+    const pays = r.pays || [];
+    close = KT.modal(h("div", { class: "fee-row" }, h("h3", {}, r.name + " (" + r.code + ")"), h("p", { class: "sub" }, (r.class ? "Lớp " + r.class + ". " : "") + mName(ymd(feeMonth)) + ": " + FEE_ST[r.status] + "."),
+      pays.length ? h("div", {}, h("h4", {}, "Các lần đã đóng"), h("ul", { class: "fee-pays" }, pays.map((p) => h("li", {},
+        h("span", {}, dShort(p.on) + ": " + vnd(p.amount) + (p.method === "bank" ? " (chuyển khoản)" : " (tiền mặt)") + (p.note ? ", " + p.note : "")),
+        h("span", {}, h("button", { class: "btn ghost sm", onclick: async () => { try { receiptModal(await T("t_fee_receipt", { p_payment: p.id })); } catch (e) { fail(e); } } }, "Biên nhận"),
+          h("button", { class: "btn ghost sm danger", onclick: () => KT.confirm("Huỷ khoản thu này?", "Khoản " + vnd(p.amount) + " ngày " + dShort(p.on) + " sẽ bị xoá, biên nhận " + p.no + " không còn giá trị.", "Huỷ khoản thu", async () => { try { await T("t_fee_pay_undo", { p_payment: p.id }); close(); done(); KT.toast("Đã huỷ khoản thu", "ok"); } catch (e) { fail(e); } }) }, "Huỷ")))))) : null,
+      h("h4", {}, "Học phí tháng này"),
+      h("div", { class: "form" }, h("div", {}, h("label", { for: "fbA" }, "Số tiền (đ)"), amt), h("div", {}, h("label", { for: "fbN" }, "Ghi chú"), note),
+        h("div", { class: "full" }, h("button", { class: "btn ghost sm", onclick: async () => { try { await T("t_fee_bill_set", { p_bill: r.bill, p_amount: amt.num(), p_note: note.value.trim() }); close(); done(); KT.toast("Đã sửa học phí tháng này", "ok"); } catch (e) { fail(e); } } }, "Lưu số tiền tháng này"),
+          r.manual ? h("button", { class: "btn ghost sm", style: "margin-left:8px", onclick: async () => { try { await T("t_fee_bill_set", { p_bill: r.bill, p_amount: 0, p_note: note.value.trim(), p_auto: true }); close(); done(); } catch (e) { fail(e); } } }, "Tính lại theo mức lớp") : null)),
+      h("h4", {}, "Giảm hoặc miễn học phí (áp dụng mọi tháng)"),
+      h("div", { class: "form" }, h("div", {}, h("label", { for: "fjK" }, "Kiểu"), kind), h("div", {}, h("label", { for: "fjV" }, "Mức giảm"), val), h("div", { class: "full" }, h("label", { for: "fjN" }, "Lí do"), jn),
+        h("div", { class: "full" }, h("button", { class: "btn sm", onclick: async () => {
+          try { await T("t_fee_adjust_set", { p_student: r.sid, p_kind: kind.value, p_value: +String(val.value).replace(/\D/g, "") || 0, p_note: jn.value.trim() }); close(); done(); KT.toast("Đã lưu mức giảm. Các tháng chưa thu sẽ tính theo mức mới.", "ok"); }
+          catch (e) { fail(e); }
+        } }, "Lưu mức giảm")))), { wide: true });
+  }
+  function receiptModal(rc) {
+    const body = () => '<div class="rc"><div class="rc-h"><b>KIẾN HỌC TOÁN</b><span>Thầy Lê Văn Hùng · 0938 829 686</span></div>'
+      + '<h2>BIÊN NHẬN HỌC PHÍ</h2><p class="rc-no">Số: ' + esc(rc.no) + '</p><table>'
+      + '<tr><td>Học sinh</td><td><b>' + esc(rc.name) + '</b> (' + esc(rc.code) + ')</td></tr>'
+      + (rc.class ? '<tr><td>Lớp</td><td>' + esc(rc.class) + '</td></tr>' : '')
+      + '<tr><td>Học phí</td><td>' + mName(rc.month) + ': ' + vnd(rc.bill_amount) + '</td></tr>'
+      + '<tr><td>Số tiền nhận</td><td><b>' + vnd(rc.amount) + '</b></td></tr>'
+      + '<tr><td>Hình thức</td><td>' + (rc.method === 'bank' ? 'Chuyển khoản' : 'Tiền mặt') + '</td></tr>'
+      + '<tr><td>Ngày nhận</td><td>' + dShort(rc.on) + '</td></tr>'
+      + '<tr><td>Tình trạng</td><td>' + (rc.paid_total >= rc.bill_amount ? 'Đã đóng đủ học phí ' + mName(rc.month).toLowerCase() : 'Còn thiếu ' + vnd(rc.bill_amount - rc.paid_total)) + '</td></tr>'
+      + (rc.note ? '<tr><td>Ghi chú</td><td>' + esc(rc.note) + '</td></tr>' : '')
+      + '</table><div class="rc-sign"><span>Người nộp</span><span>Người nhận<br><br><br><b>' + esc(rc.teacher || '') + '</b></span></div></div>';
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    const print = () => {
+      const f = h("iframe", { style: "position:fixed;right:0;bottom:0;width:0;height:0;border:0", "aria-hidden": "true" });
+      document.body.append(f);
+      const doc = f.contentDocument;
+      doc.open(); doc.write('<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Biên nhận ' + esc(rc.no) + '</title><style>' + RC_CSS + '@page{size:A5;margin:12mm}body{margin:0}</style></head><body>' + body() + '</body></html>'); doc.close();
+      setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => f.remove(), 1500); }, 250);
+    };
+    let close;
+    close = KT.modal(h("div", {}, h("div", { class: "rc-wrap", html: '<style>' + RC_CSS + '</style>' + body() }),
+      h("div", { class: "acts" }, h("button", { class: "btn ghost", onclick: () => close() }, "Đóng"), h("button", { class: "btn", onclick: print }, "In biên nhận"))), { wide: true });
+  }
+  const RC_CSS = '.rc{font-family:"Be Vietnam Pro",Arial,sans-serif;color:#1d1934;background:#fff;max-width:520px;margin:0 auto;padding:22px 24px;border:1.5px solid #1d1934;border-radius:6px}'
+    + '.rc-h{display:flex;justify-content:space-between;gap:10px;font-size:12px;border-bottom:1px solid #ccc;padding-bottom:8px}.rc h2{text-align:center;margin:16px 0 2px;font-size:20px;letter-spacing:.04em}'
+    + '.rc-no{text-align:center;margin:0 0 12px;font-size:12px;color:#555}.rc table{width:100%;border-collapse:collapse;font-size:14px}.rc td{padding:6px 4px;border-bottom:1px dotted #bbb;vertical-align:top}'
+    + '.rc td:first-child{width:36%;color:#555}.rc-sign{display:flex;justify-content:space-around;text-align:center;margin-top:18px;font-size:13px;min-height:80px}';
+  async function feeReport() {
+    const to = mFirst(new Date()), from = new Date(to.getFullYear(), to.getMonth() - 5, 1);
+    let rep = [];
+    try { rep = await T("t_fee_report", { p_from: ymd(from), p_to: ymd(to) }); } catch (e) { return h("div"); }
+    const by = {};
+    rep.forEach((r) => { const m = by[r.month] || (by[r.month] = { month: r.month, exp: 0, got: 0, n: 0, paid: 0, cls: [] }); m.exp += +r.expected; m.got += Math.min(+r.collected, +r.expected || +r.collected); m.n += r.n; m.paid += r.paid_n; m.cls.push(r); });
+    const ms = Object.values(by).sort((a, b) => (a.month < b.month ? 1 : -1));
+    const box = h("div", { class: "panel fee-rep" }, h("div", { class: "fee-rep-h" }, h("h3", {}, "Báo cáo thu 6 tháng gần đây"), ms.length ? h("button", { class: "btn ghost sm", onclick: () => feeExcel(null, ms) }, "Xuất báo cáo Excel") : null));
+    if (!ms.length) { box.append(h("p", { class: "sub" }, "Chưa có dữ liệu. Báo cáo sẽ có sau khi thầy đặt học phí và ghi nhận các khoản thu.")); return box; }
+    const max = Math.max(...ms.map((m) => m.exp), 1);
+    box.append(h("div", { class: "fee-bars", role: "img", "aria-label": "Đã thu so với phải thu theo tháng" }, ms.slice().reverse().map((m) =>
+      h("div", { class: "fee-bar" }, h("div", { class: "fb-col", title: mName(m.month) + ": thu " + vnd(m.got) + " / " + vnd(m.exp) },
+        h("i", { class: "fb-exp", style: "height:" + Math.round(m.exp / max * 100) + "%" }), h("i", { class: "fb-got", style: "height:" + Math.round(m.got / max * 100) + "%" })),
+        h("small", {}, mName(m.month).replace("Tháng ", "T"))))),
+      h("div", { class: "fee-legend" }, h("span", { class: "lg-got" }, "Đã thu"), h("span", { class: "lg-exp" }, "Phải thu")));
+    box.append(h("div", { class: "tbl-wrap" }, h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, "Tháng"), h("th", { class: "r" }, "Phải thu"), h("th", { class: "r" }, "Đã thu"), h("th", { class: "r" }, "Còn nợ"), h("th", { class: "r" }, "Đã đóng đủ"))),
+      h("tbody", {}, ms.map((m) => [h("tr", { class: "fee-mrow" }, h("td", {}, h("b", {}, mName(m.month))), h("td", { class: "r" }, vnd(m.exp)), h("td", { class: "r" }, vnd(m.got)), h("td", { class: "r" }, vnd(Math.max(0, m.exp - m.got))), h("td", { class: "r" }, m.paid + "/" + m.n)),
+        m.cls.map((c) => h("tr", { class: "fee-crow" }, h("td", {}, "Lớp " + (c.class || "?")), h("td", { class: "r" }, vnd(c.expected)), h("td", { class: "r" }, vnd(Math.min(+c.collected, +c.expected || +c.collected))), h("td", { class: "r" }, vnd(Math.max(0, c.expected - c.collected))), h("td", { class: "r" }, c.paid_n + "/" + c.n)))]).flat(2)))));
+    return box;
+  }
+  // xuất Excel: tải thư viện SheetJS khi cần
+  let xlsxP = null;
+  const loadXlsx = () => xlsxP || (xlsxP = new Promise((ok, bad) => { if (window.XLSX) return ok(window.XLSX); const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = () => ok(window.XLSX); s.onerror = () => { xlsxP = null; bad(new Error("Không tải được thư viện Excel")); }; document.head.append(s); }));
+  async function feeExcel(rows, months) {
+    let X; try { X = await loadXlsx(); } catch (e) { KT.toast("Không tải được công cụ xuất Excel, thầy kiểm tra mạng rồi thử lại.", "bad"); return; }
+    const wb = X.utils.book_new();
+    const tag = mName(ymd(feeMonth)).replace("Tháng ", "T").replace("/", "-");
+    if (rows) {
+      const data = rows.map((r) => ({ "Mã HS": r.code, "Họ tên": r.name, "Lớp": r.class || "", "Học phí": r.amount, "Đã đóng": r.paid, "Còn thiếu": Math.max(0, r.amount - r.paid), "Trạng thái": FEE_ST[r.status], "Ngày đóng gần nhất": r.last ? dShort(r.last) : "", "Giảm/miễn": adjText(r.adj), "SĐT": r.phone || "", "Ghi chú": r.note || "" }));
+      const ws = X.utils.json_to_sheet(data); ws["!cols"] = [10, 24, 8, 12, 12, 12, 12, 14, 18, 14, 24].map((w) => ({ wch: w }));
+      X.utils.book_append_sheet(wb, ws, tag);
+      const pays = []; rows.forEach((r) => (r.pays || []).forEach((p) => pays.push({ "Số biên nhận": p.no, "Ngày": dShort(p.on), "Mã HS": r.code, "Họ tên": r.name, "Lớp": r.class || "", "Số tiền": p.amount, "Hình thức": p.method === "bank" ? "Chuyển khoản" : "Tiền mặt", "Ghi chú": p.note || "" })));
+      if (pays.length) { const w2 = X.utils.json_to_sheet(pays); w2["!cols"] = [16, 12, 10, 24, 8, 12, 14, 24].map((w) => ({ wch: w })); X.utils.book_append_sheet(wb, w2, "Các khoản thu"); }
+      X.writeFile(wb, "HocPhi_" + tag + ".xlsx");
+    } else {
+      const data = []; months.forEach((m) => { data.push({ "Tháng": mName(m.month), "Lớp": "Tất cả", "Phải thu": m.exp, "Đã thu": m.got, "Còn nợ": Math.max(0, m.exp - m.got), "Số em": m.n, "Đã đóng đủ": m.paid });
+        m.cls.forEach((c) => data.push({ "Tháng": mName(m.month), "Lớp": c.class || "", "Phải thu": +c.expected, "Đã thu": Math.min(+c.collected, +c.expected || +c.collected), "Còn nợ": Math.max(0, c.expected - c.collected), "Số em": c.n, "Đã đóng đủ": c.paid_n })); });
+      const ws = X.utils.json_to_sheet(data); ws["!cols"] = [14, 10, 14, 14, 14, 8, 10].map((w) => ({ wch: w }));
+      X.utils.book_append_sheet(wb, ws, "Báo cáo"); X.writeFile(wb, "BaoCaoHocPhi.xlsx");
+    }
+  }
   // video bắt buộc: học sinh lớp mình phải xem xong mới vào được trang
   async function tabGate(el) {
     let d;

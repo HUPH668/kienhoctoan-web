@@ -131,6 +131,7 @@
       h("div", { class: "dd-prof" }, h("span", { class: "av lg pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("div", {}, h("b", {}, name), h("small", {}, (cls ? "Lớp " + cls + ", mã " : "Mã ") + sess.code), I ? h("small", {}, "Cấp " + I.L + ", " + I.title + ", " + KT.num(I.xp) + " KN") : null)),
       inExam ? null : [mi("achieve", "Thành tích của em", () => go("achieve")), mi("book", "Sổ câu sai", () => go("book")), mi("tests", "Bài kiểm tra", () => go("tests"))],
       window.KHCalc ? mi("calc", "Máy tính cầm tay", () => window.KHCalc.open()) : null,
+      inExam ? null : mi("tests", "Học phí" + (feeOwed().length ? " (" + feeOwed().length + " tháng chưa xong)" : ""), feeModal),
       mi("moon", "Đổi giao diện sáng/tối", () => document.getElementById("themeBtn").click()),
       h("div", { class: "dd-sep" }), mi("out", "Đăng xuất", out));
     who.append(dd(av, um));
@@ -269,7 +270,8 @@
       app.innerHTML = ""; app.append(skeleton());
       try {
         [home, stats, lboard] = await Promise.all([rpc("student_home"), stats ? Promise.resolve(stats) : api.rpc("bank_stats", {}), api.rpc("leaderboard", { p_limit: 50, p_token: sess.token }).catch(() => null), loadVids(),
-          dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {}))]);
+          dstats ? null : api.rpc("dgnl_stats", {}).then((d) => (dstats = d || {})).catch(() => (dstats = {})),
+          rpc("fee_status").then((f) => (fees = (f && f.rows) || [])).catch(() => (fees = []))]);
         clockSkew = new Date(home.server_now).getTime() - Date.now();
         if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
         homeAt = Date.now(); liveProm = rpc("live_list").catch(() => []);
@@ -461,6 +463,22 @@
     return Object.values(M).map((o) => Object.assign(o, { m: o.w ? o.m / o.w : 0 })).sort((a, b) => ((recent[b.g] || 0) - (recent[a.g] || 0)) || b.w - a.w);
   }
   // các việc cần làm (dùng cho thẻ nhiệm vụ và chuông thông báo), tính từ dữ liệu thật
+  /* học phí: học sinh chỉ xem trạng thái */
+  var fees = [];
+  const FEE_ST = { paid: "Đã đóng", partial: "Đóng thiếu", late: "Quá hạn", unpaid: "Chưa đóng", free: "Được miễn", nofee: "Chưa có" };
+  const vnd = (n) => KT.num(n || 0) + " đ";
+  const mLabel = (m) => { const d = new Date(m + "T00:00:00"); return "Tháng " + (d.getMonth() + 1) + "/" + d.getFullYear(); };
+  const dLabel = (m) => { const d = new Date(m + "T00:00:00"); return d.getDate() + "/" + (d.getMonth() + 1); };
+  const feeOwed = () => fees.filter((f) => ["late", "partial", "unpaid"].includes(f.status));
+  function feeModal() {
+    KT.modal(h("div", { class: "fee-st" }, h("h3", {}, "Học phí của em"),
+      fees.length ? h("ul", { class: "fee-list" }, fees.map((f) => h("li", {},
+        h("div", {}, h("b", {}, mLabel(f.month)), h("small", {}, f.status === "free" ? "Em được miễn học phí tháng này" : f.status === "nofee" ? "Thầy cô chưa đặt học phí" :
+          vnd(f.amount) + (f.paid && f.paid < f.amount ? ", đã đóng " + vnd(f.paid) : "") + (["unpaid", "late", "partial"].includes(f.status) ? ", hạn " + dLabel(f.due) : ""))),
+        h("span", { class: "fee-badge fs-" + f.status }, FEE_ST[f.status] || f.status))))
+        : h("p", { class: "sub" }, "Chưa có thông tin học phí."),
+      h("p", { class: "sub" }, "Thông tin do thầy cô cập nhật sau khi nhận học phí. Nếu em thấy chưa đúng, em báo lại thầy cô nhé.")));
+  }
   function todoItems() {
     const now = Date.now() + clockSkew, items = [];
     (home.remedials || []).forEach((r) => items.push({ k: "rem", pri: 0, t: "Làm bài bổ sung bắt buộc", s: remNames(r).join("; "), go: () => startRemedial(r.id), cta: r.doing ? "Làm tiếp" : "Làm ngay", st: "Bắt buộc", xp: "KN theo số câu đúng" }));
@@ -478,9 +496,16 @@
       go: startMission, cta: ms ? "Làm tiếp" : "Bắt đầu", st: ms ? "Đang làm" : "Chưa bắt đầu", xp: "+30 KN thưởng khi xong" });
     const due = (home.review || {}).due || 0;
     if (due) items.push({ k: "rev", pri: 4, t: "Ôn lại " + Math.min(due, 10) + " câu từng làm sai", s: due + " câu trong sổ câu sai đã đến hạn ôn.", go: startReview, cta: "Ôn ngay", st: "Đến hạn", xp: "+5 KN mỗi câu ôn đúng" });
+    const owed = feeOwed().filter((f) => f.status !== "unpaid" || new Date(f.due + "T23:59:59").getTime() - now < 3 * 864e5);
+    if (owed.length) {
+      const f = owed[owed.length - 1], late = owed.some((x) => x.status === "late");
+      items.push({ k: "fee", pri: late ? 1 : 5, urgent: late, t: "Học phí " + mLabel(f.month).toLowerCase() + (owed.length > 1 ? " và " + (owed.length - 1) + " tháng khác" : ""),
+        s: late ? "Đã quá hạn đóng. Em nhắc bố mẹ đóng học phí giúp thầy cô nhé." : "Sắp đến hạn đóng (" + dLabel(f.due) + "). Em nhắc bố mẹ giúp thầy cô nhé.",
+        go: feeModal, cta: "Xem học phí", st: late ? "Quá hạn" : FEE_ST[f.status], xp: "" });
+    }
     return items.sort((a, b) => a.pri - b.pri);
   }
-  const MIC = { rem: "!", asg: "✎", doing: "↻", mis: "★", rev: "⟲", live: "●" };
+  const MIC = { rem: "!", asg: "✎", doing: "↻", mis: "★", rev: "⟲", live: "●", fee: "₫" };
   function missionGrid(items) {
     const grid = h("div", { class: "mgrid" });
     const card = (it, done) => h("article", { class: "mcard m-" + it.k + (done ? " done" : "") + (it.urgent ? " urgent" : "") },

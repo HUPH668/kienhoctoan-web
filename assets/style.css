@@ -1934,3 +1934,61 @@ body.gate-on{overflow:hidden}
 .gate-out{display:block;margin:14px auto 0;background:none;border:0;color:var(--ink-3);font:inherit;font-size:.85rem;text-decoration:underline;cursor:pointer}
 .gate-list{columns:2;font-size:.88rem;line-height:1.6;padding-left:1.1rem}
 @media (max-width:620px){.gate-list{columns:1}}
+
+/* ===== học phí ===== */
+.fee-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.fee-m{font-size:1.15rem;min-width:140px;text-align:center}
+.fee-sp{flex:1}
+.fee-kpis{margin-bottom:14px}
+.fee-kpis .kpi .n{font-size:1.25rem}
+.fee-kpis .kpi.ok .n{color:var(--ok)}
+.fee-kpis .kpi.warn .n{color:var(--bad)}
+.fee-filter{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.fee-filter select,.fee-filter input{width:auto;min-width:160px}
+.fee-filter input{flex:1;max-width:320px}
+.fee-tbl td.r,.fee-tbl th.r,.fee-rep td.r,.fee-rep th.r{text-align:right;font-variant-numeric:tabular-nums}
+.fee-tbl td{vertical-align:middle}
+.fee-tbl .sub{font-size:12px}
+.fee-adj{font-size:12px;color:var(--brand);font-weight:600}
+.fee-act{white-space:nowrap;text-align:right}
+.fee-act .btn+.btn{margin-left:6px}
+.fee-badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;white-space:nowrap;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+.fee-badge.fs-paid{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+.fee-badge.fs-free{background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand);border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+.fee-badge.fs-partial,.fee-badge.fs-unpaid{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+.fee-badge.fs-late{background:color-mix(in srgb,var(--bad) 13%,transparent);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+.fee-row h4{margin:16px 0 6px;font-size:.95rem}
+.fee-pays{list-style:none;padding:0;margin:0;display:grid;gap:6px}
+.fee-pays li{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:10px;background:var(--surface-2);font-size:.9rem}
+.fee-pays li .btn+.btn{margin-left:6px}
+.fee-rep{margin-top:18px}
+.fee-rep-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fee-bars{display:flex;align-items:flex-end;gap:14px;height:150px;margin:14px 0 6px;padding:0 4px}
+.fee-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;min-width:0}
+.fee-bar small{font-size:12px;color:var(--ink-3)}
+.fb-col{position:relative;flex:1;width:min(46px,100%)}
+.fb-col i{position:absolute;left:0;right:0;bottom:0;border-radius:6px 6px 2px 2px}
+.fb-exp{background:var(--surface-2);border:1px dashed var(--line-2)}
+.fb-got{background:var(--grad-brand);left:4px!important;right:4px!important}
+.fee-legend{display:flex;gap:16px;font-size:12.5px;color:var(--ink-3);margin-bottom:8px}
+.fee-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.lg-got::before{background:var(--brand)}.lg-exp::before{background:var(--surface-2);border:1px dashed var(--line-2)}
+.fee-mrow td{background:var(--surface-2)}
+.fee-crow td{font-size:.88rem;color:var(--ink-2)}
+.fee-crow td:first-child{padding-left:22px}
+.rc-wrap{overflow-x:auto;padding:4px}
+/* học sinh */
+.fee-list{list-style:none;padding:0;margin:12px 0;display:grid;gap:8px}
+.fee-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line)}
+.fee-list li b{display:block}.fee-list li small{color:var(--ink-3)}
+@media (max-width:700px){
+  .fee-tbl thead{display:none}
+  .fee-tbl tr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .fee-tbl td{border:0;padding:2px 4px}
+  .fee-tbl td:nth-child(2){grid-column:2;grid-row:1;text-align:right}
+  .fee-tbl td:nth-child(3)::before{content:"Học phí: ";color:var(--ink-3);font-size:12px}
+  .fee-tbl td:nth-child(4)::before{content:"Đã đóng: ";color:var(--ink-3);font-size:12px}
+  .fee-tbl td.r{text-align:left}
+  .fee-act{grid-column:1/-1;text-align:left}
+  .fee-filter input{max-width:none}
+}
