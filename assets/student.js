@@ -733,9 +733,9 @@
         const b = await rpc("nb_get", { p_id: meta.id });
         if (b.error) throw new Error(b.error);
         nbBook = b;
-        const ids = [...new Set(b.secs.flatMap((x) => [...x.html.matchAll(/data-fig="([0-9a-f]+)"/g)].map((m) => m[1])))].filter((k) => !nbFigs[k]);
-        for (let i = 0; i < ids.length; i += 150) Object.assign(nbFigs, await api.rpc("get_figs", { p_ids: ids.slice(i, i + 150) }));
       }
+      const ids = [...new Set(nbBook.secs.flatMap((x) => [...x.html.matchAll(/data-fig="([0-9a-f]+)"/g)].map((m) => m[1])))].filter((k) => !nbFigs[k]);
+      for (let i = 0; i < ids.length; i += 150) Object.assign(nbFigs, await api.rpc("get_figs", { p_ids: ids.slice(i, i + 150) }));
     } catch (e) { box.innerHTML = ""; box.append(h("p", { class: "muted" }, "Chưa mở được sổ tay. Em thử tải lại trang nhé.")); if (/SESSION_EXPIRED/.test(e.message)) fail(e); return; }
     drawNotes(box);
   }
@@ -754,6 +754,11 @@
     const tocEls = {};
     const wide = () => matchMedia("(min-width: 901px)").matches;
     const det = h("details", { class: "nb-tocwrap", open: wide() }, h("summary", {}, h("span", {}, "Mục lục"), h("small", { class: "nb-cur" })), toc);
+    // điện thoại: dải số mục dính trên đầu, chạm để chuyển nhanh
+    const strip = h("nav", { class: "nb-strip", "aria-label": "Chuyển nhanh giữa các mục" });
+    const stripEls = {};
+    secs.forEach((x) => { const b = h("button", { class: "nb-sn", "aria-label": (x.no ? "Mục " + x.no + ": " : "") + x.title.replace(/<[^>]+>/g, ""), onclick: () => show(x.key, null, true) }, x.no || "✎"); stripEls[x.key] = b; strip.append(b); });
+    const stripBar = h("div", { class: "nb-stripwrap" }, strip, h("button", { class: "nb-sn nb-sn-toc", "aria-label": "Mở mục lục", onclick: () => { const f = document.querySelector("#nbFab .fab-btn"); if (f && getComputedStyle(f).display !== "none") f.click(); else { det.open = true; det.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, "☰"));
     const partName = (no) => { const p = (B.parts || []).find((x) => x.no === no); return p ? p.name : ""; };
     const tick = (x) => {
       const on = marks.has(x.key);
@@ -765,7 +770,10 @@
       } }, h("span", { class: "nb-box", "aria-hidden": "true" }), on ? "Đã thuộc" : "Đánh dấu đã thuộc");
     };
     const burst = (el) => { if (!el) return; el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop"); };
-    const markToc = () => Object.entries(tocEls).forEach(([k, a]) => { a.classList.toggle("on", marks.has(k)); a.classList.toggle("cur", k === nbKey && !nbQ.trim()); if (k === nbKey) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current"); });
+    const markToc = () => Object.entries(tocEls).forEach(([k, a]) => {
+      a.classList.toggle("on", marks.has(k)); a.classList.toggle("cur", k === nbKey && !nbQ.trim()); if (k === nbKey) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+      const sb = stripEls[k]; if (sb) { sb.classList.toggle("on", marks.has(k)); sb.classList.toggle("cur", k === nbKey); if (k === nbKey) sb.setAttribute("aria-current", "true"); else sb.removeAttribute("aria-current"); }
+    });
     // mục lục
     let lastPart = null;
     secs.forEach((x) => {
@@ -775,12 +783,15 @@
       tocEls[x.key] = a; toc.append(a);
     });
     // một mục
+    let lastIdx = -1;
     function show(key, boxIdx, fromToc) {
+      const dir = lastIdx < 0 ? 0 : secs.findIndex((s) => s.key === key) - lastIdx;
       nbKey = key; store.set("kt_nb_last", key);
       if (nbQ) { nbQ = ""; q.value = ""; }
       const i = secs.findIndex((s) => s.key === key), x = secs[i], prev = secs[i - 1], next = secs[i + 1];
       det.querySelector(".nb-cur").innerHTML = (x.no ? x.no + " · " : "") + x.title;
-      const art = h("article", { class: "nb-sec", tabindex: "-1" },
+      lastIdx = i;
+      const art = h("article", { class: "nb-sec" + (dir > 0 ? " fwd" : dir < 0 ? " back" : ""), tabindex: "-1" },
         h("p", { class: "nb-crumb" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : ""),
         h("header", { class: "nb-sh" }, x.no ? h("span", { class: "nb-no" }, x.no) : null, h("h2", { html: x.title }), x.no ? tick(x) : null),
         h("div", { class: "nb-body", html: x.html }),
@@ -790,9 +801,10 @@
       main.innerHTML = ""; main.append(art);
       KT.typeset(art, nbFigs); fitFigs(art); KT.typeset(det.querySelector(".nb-cur"));
       markToc();
+      const sb = stripEls[key]; if (sb && strip.scrollWidth > strip.clientWidth) strip.scrollTo({ left: sb.offsetLeft - strip.clientWidth / 2 + sb.offsetWidth / 2, behavior: nbRM() ? "auto" : "smooth" });
       if (!wide()) det.open = false;
       if (fromToc || boxIdx != null) {
-        const top = box.getBoundingClientRect().top + window.scrollY - 76;
+        const top = main.getBoundingClientRect().top + window.scrollY - (wide() ? 84 : 126);
         if (window.scrollY > top || boxIdx == null) window.scrollTo({ top: Math.max(0, top), behavior: nbRM() ? "auto" : "smooth" });
         art.focus({ preventScroll: true });
       }
@@ -826,8 +838,18 @@
       KT.typeset(main);
     }
     q.addEventListener("input", search);
+    let tx = null, ty = 0;
+    main.addEventListener("touchstart", (e) => { const t = e.touches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
+    main.addEventListener("touchend", (e) => {
+      if (tx == null || nbQ.trim()) return;
+      const t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty; tx = null;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < 2 * Math.abs(dy) || (e.target.closest && e.target.closest(".katex-display, table, .nb-strip"))) return;
+      const i = secs.findIndex((s) => s.key === nbKey), to = secs[i + (dx < 0 ? 1 : -1)];
+      if (to) show(to.key, null, true);
+    }, { passive: true });
     box.innerHTML = "";
     box.append(h("div", { class: "nb-head" }, h("div", {}, h("h1", {}, B.title), h("p", {}, prog, " · Dùng cho mọi khối lớp · Cập nhật " + KT.dt(B.updated_at))), q),
+      stripBar,
       h("div", { class: "nb-grid" }, h("aside", { class: "nb-side" }, det), main));
     setProg();
     KT.typeset(toc);
