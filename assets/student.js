@@ -289,6 +289,7 @@
     const w = h("section", { class: "wrap view v-" + view });
     ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve, game: viewGame, notes: viewNotes })[view](w);
     if (view !== "notes") { const tk = nbTicker(); if (tk) app.append(tk); }
+    nbFab();
     app.append(w);
     KT.typeset(app);
     if (!cached) setTimeout(celebrate, 500);
@@ -845,11 +846,59 @@
     run.style.setProperty("--tk-dur", Math.max(40, items.length * 5) + "s");
     const pause = h("button", { class: "tk-pause", "aria-label": "Tạm dừng dải kiến thức", "aria-pressed": "false", onclick: () => { tickPaused = !tickPaused; set(); } });
     const el = h("section", { class: "tk", "aria-label": "Kiến thức trong sổ tay — chạm để xem" },
-      h("button", { class: "tk-lab", onclick: () => go("notes") }, h("span", { class: "tk-ic", "aria-hidden": "true" }, "Σ"), h("span", {}, "Sổ tay")),
+      h("button", { class: "tk-lab", onclick: () => openNote(null) }, h("span", { class: "tk-ic", "aria-hidden": "true" }, "Σ"), h("span", {}, "Sổ tay")),
       h("div", { class: "tk-view" }, run), pause);
     const set = () => { el.classList.toggle("paused", tickPaused); pause.setAttribute("aria-pressed", String(tickPaused)); pause.setAttribute("aria-label", tickPaused ? "Chạy tiếp dải kiến thức" : "Tạm dừng dải kiến thức"); pause.textContent = tickPaused ? "▶" : "❚❚"; };
     set();
     return el;
+  }
+
+  /* ----- Nút Sổ tay nổi ở góc màn hình: bấm để hiện mục lục, chọn mục để mở ----- */
+  let fabEl = null;
+  function nbFab() {
+    if (!nbList.length) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
+    if (fabEl && document.body.contains(fabEl)) return;
+    const btn = h("button", { class: "fab-btn", "aria-label": "Mục lục sổ tay kiến thức", "aria-expanded": "false", "aria-haspopup": "dialog" },
+      h("span", { class: "fab-ring", "aria-hidden": "true" }), h("span", { class: "fab-ic", "aria-hidden": "true" }, "Σ"), h("span", { class: "fab-lab" }, "Mục lục"));
+    const panel = h("div", { class: "fab-panel", role: "dialog", "aria-label": "Mục lục sổ tay", hidden: true });
+    fabEl = h("div", { id: "nbFab", class: "fab" }, panel, btn);
+    document.body.append(fabEl);
+    const onDoc = (e) => { if (!fabEl.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
+    function close() { if (panel.hidden) return; panel.hidden = true; btn.setAttribute("aria-expanded", "false"); fabEl.classList.remove("open"); document.removeEventListener("pointerdown", onDoc); document.removeEventListener("keydown", onKey); }
+    async function open() {
+      const meta = nbList[0];
+      panel.innerHTML = ""; panel.hidden = false; btn.setAttribute("aria-expanded", "true"); fabEl.classList.add("open");
+      setTimeout(() => { document.addEventListener("pointerdown", onDoc); document.addEventListener("keydown", onKey); }, 0);
+      if (!nbBook || nbBook.id !== meta.id || nbBook.updated_at !== meta.updated_at) {
+        panel.append(h("p", { class: "fab-wait" }, "Đang mở mục lục…"));
+        try { const b = await rpc("nb_get", { p_id: meta.id }); if (b.error) throw new Error(b.error); nbBook = b; }
+        catch (e) { panel.innerHTML = ""; panel.append(h("p", { class: "fab-wait" }, "Chưa mở được mục lục. Em thử lại sau nhé.")); return; }
+        if (panel.hidden) return;
+      }
+      const B = nbBook, marks = new Set(B.marks || []), learn = B.secs.filter((x) => x.no);
+      const done = learn.filter((x) => marks.has(x.key)).length;
+      const partName = (no) => { const p = (B.parts || []).find((x) => x.no === no); return p ? p.name : ""; };
+      const list = h("nav", { class: "fab-toc", "aria-label": "Mục lục" });
+      let lastPart = null, i = 0;
+      B.secs.forEach((x) => {
+        if (x.part !== lastPart) { lastPart = x.part; list.append(h("div", { class: "fab-part" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : "")); }
+        list.append(h("button", { class: "fab-it" + (marks.has(x.key) ? " done" : "") + (x.key === store.get("kt_nb_last") ? " last" : ""), style: "--d:" + Math.min(i++, 14) * 22 + "ms",
+          onclick: () => { close(); openNote(x.key); } },
+          h("span", { class: "fab-no" }, x.no || "✎"), h("span", { class: "fab-t", html: x.title }), marks.has(x.key) ? h("span", { class: "fab-ok", "aria-label": "đã thuộc" }, "✓") : null));
+      });
+      panel.innerHTML = "";
+      panel.append(
+        h("div", { class: "fab-ph" }, h("span", { class: "fab-ic sm", "aria-hidden": "true" }, "Σ"),
+          h("div", {}, h("b", {}, B.title), h("small", {}, "Đã thuộc " + done + "/" + learn.length + " mục · dùng cho mọi khối")),
+          h("button", { class: "fab-x", "aria-label": "Đóng mục lục", onclick: () => { close(); btn.focus(); } }, "×")),
+        h("div", { class: "fab-bar", "aria-hidden": "true" }, h("i", { style: "width:" + (learn.length ? Math.round((100 * done) / learn.length) : 0) + "%" })),
+        list);
+      KT.typeset(list);
+      const first = list.querySelector(".fab-it.last") || list.querySelector(".fab-it:not(.done)") || list.querySelector(".fab-it");
+      if (first) { first.scrollIntoView({ block: "center" }); first.focus({ preventScroll: true }); }
+    }
+    btn.addEventListener("click", () => (panel.hidden ? open() : close()));
   }
 
   /* ----- Luyện theo đề có sẵn (đề thật của các trường, sở: đúng câu, đúng thứ tự như đề gốc) ----- */
