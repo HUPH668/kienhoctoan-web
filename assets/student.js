@@ -2132,6 +2132,51 @@
     tick();
   }
 
+  /* ---------------- Bảng phụ của thầy cô ---------------- */
+  let bdNow = null, bdOpenEl = null;
+  const bdPill = h("button", { type: "button", class: "bd-pill", hidden: true, onclick: () => boardOpen() },
+    h("i", { class: "bd-pulse", "aria-hidden": "true" }), h("span", { class: "bd-pill-t" }), h("b", {}, "Vào bảng"));
+  document.body.append(bdPill);
+  async function boardCheck() {
+    if (!sess || bdOpenEl || document.visibilityState !== "visible") return;
+    if (cur && cur.status === "doing") { bdPill.hidden = true; return; }
+    let b = null; try { b = await rpc("board_now"); } catch (e) { return; }
+    bdNow = b; bdPill.hidden = !b;
+    if (!b) return;
+    bdPill.querySelector(".bd-pill-t").textContent = (b.teacher || "Thầy cô") + " đang mở bảng phụ: " + b.title;
+    if (store.get("kt_bd_seen", "") !== b.id) { store.set("kt_bd_seen", b.id); bdPill.classList.remove("new"); void bdPill.offsetWidth; bdPill.classList.add("new"); }
+  }
+  setInterval(boardCheck, 12000); setTimeout(boardCheck, 1200);
+  async function boardOpen() {
+    if (!bdNow || bdOpenEl) return;
+    const id = bdNow.id;
+    let d; try { d = await rpc("board_pull", { p_id: id, p_since: 0 }); } catch (e) { return KT.toast(e.message, "bad"); }
+    let since = d.rev, can = !!d.can, pulling = false;
+    const st = h("span", { class: "bd-st" });
+    const drawSt = () => { st.className = "bd-st " + (can ? "can" : "lock"); st.textContent = can ? "✏️ Em được viết, vẽ lên bảng chung" : "🔒 Em xem và kéo thử hình trên máy mình"; };
+    const frame = KT.boardFrame({ role: "s", me: d.me, can, init: d,
+      push: (x) => rpc("board_push", { p_id: id, p_set: x.set, p_del: x.del, p_imgs: x.imgs }).catch((e) => (e.data && e.data.error ? e.data : { error: e.message })),
+      onCan: (v) => { can = v; drawSt(); } });
+    const close = () => { clearInterval(t); bdOpenEl.remove(); bdOpenEl = null; document.body.classList.remove("bd-on"); boardCheck(); };
+    bdOpenEl = h("div", { class: "bd-ov", role: "dialog", "aria-modal": "true", "aria-label": "Bảng phụ" },
+      h("div", { class: "bd-bar" }, h("div", { class: "bd-ttl" }, h("b", {}, d.title), st), h("span", { class: "sp" }),
+        h("button", { class: "btn ghost sm", title: "Bỏ các thay đổi trên máy em, hiện lại đúng bảng của thầy cô", onclick: () => { const sy = frame.sy(); if (sy) sy.resetAll(); } }, "↺ Bảng của thầy cô"),
+        h("button", { class: "btn sm", onclick: () => close() }, "Đóng")),
+      h("div", { class: "bd-main" }, frame));
+    document.body.append(bdOpenEl); document.body.classList.add("bd-on"); bdPill.hidden = true; drawSt();
+    async function pull() {
+      const sy = frame.sy(); if (pulling || !sy) return; pulling = true;
+      try {
+        const r = await rpc("board_pull", { p_id: id, p_since: since });
+        sy.apply(r, false); since = Math.max(since, r.rev);
+        if (!!r.can !== can) { sy.setCan(r.can); can = !!r.can; drawSt(); }
+        if (r.status !== "open") { KT.toast("Thầy cô đã đóng bảng phụ.", "ok"); close(); }
+      } catch (e) { if (e.soft) { KT.toast(e.message, "bad"); close(); } }
+      pulling = false;
+    }
+    const t = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 1000);
+  }
+
   /* ---------------- khởi động ---------------- */
   window.addEventListener("beforeunload", () => { if (cur && dirty.size) flush(); });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });

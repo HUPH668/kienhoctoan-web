@@ -24,7 +24,7 @@
 
   /* ---------------- đăng nhập ---------------- */
   function renderLogin(msg) {
-    stopPoll(); setWho(); app.innerHTML = "";
+    stopPoll(); setWho(); app.innerHTML = ""; document.body.classList.remove("bd-teach");
     const em = h("input", { id: "em", type: "email", autocomplete: "username", required: true });
     const pw = h("input", { id: "pw", type: "password", autocomplete: "current-password", required: true });
     const err = h("div", { class: "note bad" + (msg ? "" : " hidden") }, msg || "");
@@ -100,19 +100,19 @@
     render();
   }
   function render() {
-    stopPoll(); setWho(); app.innerHTML = "";
+    stopPoll(); setWho(); app.innerHTML = ""; document.body.classList.remove("bd-teach");
     const w = h("section", { class: "wrap" });
     const admin = !!(ov.me && ov.me.role === "admin");
     const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
     const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)], ["credits", "Điểm làm bài"],
-      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["fees", "Học phí"], ["gate", "Video đầu giờ"],
+      admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["board", "Bảng phụ"], ["fees", "Học phí"], ["gate", "Video đầu giờ"],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
     w.append(dashHead());
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
-      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; render(); } }, lab))));
+      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; bdCur = null; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, board: tabBoard, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
   }
 
   // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
@@ -212,6 +212,108 @@
         s.status !== "ended" ? h("button", { class: "btn ghost sm", onclick: () => liveForm(s, () => { el.innerHTML = ""; tabLive(el); }) }, "Sửa") : null,
         h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá buổi học?", "Xoá “" + KT.esc(s.title) + "” cùng điểm danh, tin nhắn và câu hỏi nhanh của buổi này.", "Xoá",
           async () => { await T("t_live_status", { p_id: s.id, p_status: "delete" }).catch(fail); el.innerHTML = ""; tabLive(el); }) }, "Xoá")))));
+  }
+
+  /* ---------------- Bảng phụ lớp học ---------------- */
+  let bdCur = null;
+  async function tabBoard(el) {
+    if (bdCur) return boardRoom(el, bdCur);
+    el.append(h("div", { class: "review-t" }, h("h2", { style: "margin:0" }, "Bảng phụ lớp học")));
+    const picked = new Set((store.get("kt_bd_cls", []) || []).map(String).filter((k) => ov.classes.some((c) => String(c.id) === k)));
+    const title = h("input", { id: "bdT", maxlength: 120, placeholder: "VD: Chữa bài tập Định lí Pythagore" });
+    const chips = h("div", { class: "bd-cls", role: "group", "aria-label": "Lớp" }, ov.classes.map((c) => {
+      const k = String(c.id);
+      const b = h("button", { type: "button", class: "bd-chip" + (picked.has(k) ? " on" : ""), "aria-pressed": String(picked.has(k)),
+        onclick: () => { picked.has(k) ? picked.delete(k) : picked.add(k); b.classList.toggle("on", picked.has(k)); b.setAttribute("aria-pressed", String(picked.has(k))); } },
+        h("span", { class: "bd-chk", "aria-hidden": "true" }), c.name, h("small", {}, c.n + " HS"));
+      return b;
+    }));
+    const open = h("button", { class: "btn", onclick: async () => {
+      if (!picked.size) return KT.toast("Chọn ít nhất một lớp.", "bad");
+      store.set("kt_bd_cls", [...picked]);
+      try { const r = await T("t_board_open", { p_title: title.value, p_classes: [...picked].map(Number) }); bdCur = r.id; render(); } catch (e) { fail(e); }
+    } }, "Mở bảng cho lớp");
+    el.append(h("div", { class: "panel bd-new" },
+      h("div", { class: "bd-new-tx" }, h("h3", {}, "Mở bảng mới"),
+        h("p", {}, "Học sinh lớp được chọn thấy bảng của thầy cô ngay trên máy mình và kéo thử được các hình động. Thầy cô cho cả lớp hoặc từng em viết, vẽ lên bảng chung, rồi khoá lại lúc nào cũng được.")),
+      h("label", { for: "bdT" }, "Tên bảng"), title, h("label", {}, "Mở cho lớp"), chips, h("div", { class: "bd-new-act" }, open)));
+    const box = h("div", { class: "bd-list" }, h("div", { class: "loading" }, "Đang tải…"));
+    el.append(h("h3", { class: "bd-h3" }, "Bảng gần đây"), box);
+    let list; try { list = await T("t_board_list"); } catch (e) { box.innerHTML = ""; fail(e); return; }
+    box.innerHTML = "";
+    if (!list.length) { box.append(h("div", { class: "panel empty" }, "Chưa có bảng nào.")); return; }
+    list.forEach((b) => box.append(h("div", { class: "bd-item" + (b.status === "open" ? " open" : "") },
+      h("div", { class: "bd-item-t" }, h("b", {}, b.title), h("span", {}, "Lớp " + b.classes.join(", ") + " · " + b.n + " đối tượng · " + KT.dt(b.updated_at))),
+      b.status === "open" ? h("span", { class: "bd-live" }, "Đang mở") : null,
+      h("button", { class: "btn sm" + (b.status === "open" ? "" : " ghost"), onclick: async () => {
+        if (b.status !== "open") { try { await T("t_board_set", { p_id: b.id, p_status: "open" }); } catch (e) { return fail(e); } }
+        bdCur = b.id; render();
+      } }, b.status === "open" ? "Vào bảng" : "Mở lại"))));
+  }
+
+  async function boardRoom(el, id) {
+    let d; try { d = await T("t_board_pull", { p_id: id, p_since: 0 }); } catch (e) { bdCur = null; fail(e); return; }
+    let since = d.rev, perm = d.perm, allow = new Set(d.allow || []), studs = d.students || [], showSide = store.get("kt_bd_side", true) !== false, pulling = false;
+    const PERM = [["view", "🔒", "Chỉ xem, tương tác hình", "Học sinh xem bảng và kéo thử hình trên máy mình, không viết lên bảng chung"], ["all", "✏️", "Cả lớp được viết", "Mọi học sinh trong lớp viết, vẽ được lên bảng chung"], ["pick", "👤", "Chọn em được viết", "Chỉ các em được bấm ✏️ trong danh sách mới viết được"]];
+    const permBtns = {};
+    const permBox = h("div", { class: "bd-perm", role: "radiogroup", "aria-label": "Quyền của học sinh" }, PERM.map(([k, ic, t, tip]) =>
+      (permBtns[k] = h("button", { type: "button", role: "radio", title: tip, onclick: () => setPerm(k) }, h("span", { "aria-hidden": "true" }, ic), h("span", {}, t)))));
+    const stat = h("span", { class: "bd-st" });
+    const side = h("aside", { class: "bd-side", "aria-label": "Học sinh" });
+    const frame = KT.boardFrame({ role: "t", init: d, push: (x) => T("t_board_push", { p_id: id, p_meta: x.meta, p_set: x.set, p_del: x.del, p_imgs: x.imgs }) });
+    const room = h("div", { class: "bd-room" + (showSide ? "" : " no-side") },
+      h("div", { class: "bd-bar" },
+        h("button", { class: "btn ghost sm bd-back", title: "Về danh sách bảng (bảng vẫn mở cho học sinh)", "aria-label": "Về danh sách bảng", onclick: () => { bdCur = null; render(); } }, "←"),
+        h("div", { class: "bd-ttl" }, h("b", {}, d.title), stat), permBox, h("span", { class: "sp" }),
+        h("button", { class: "btn ghost sm", "aria-pressed": String(showSide), onclick: (e) => { showSide = !showSide; store.set("kt_bd_side", showSide); room.classList.toggle("no-side", !showSide); e.currentTarget.setAttribute("aria-pressed", String(showSide)); } }, "Học sinh"),
+        h("button", { class: "btn ghost sm", onclick: () => { const fe = document.fullscreenElement || document.webkitFullscreenElement; if (fe) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else { const rq = room.requestFullscreen || room.webkitRequestFullscreen; rq && rq.call(room); } } }, "⛶ Trình chiếu"),
+        h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Đóng bảng phụ?", "Học sinh sẽ không xem bảng này nữa. Nội dung vẫn được lưu, thầy cô mở lại lúc nào cũng được.", "Đóng bảng",
+          async () => { await T("t_board_set", { p_id: id, p_status: "closed" }).catch(fail); bdCur = null; render(); }) }, "Đóng bảng")),
+      h("div", { class: "bd-main" }, frame, side));
+    el.append(room); document.body.classList.add("bd-teach");
+    const fitTop = () => { const t = document.querySelector(".top"); room.style.top = (t ? Math.max(0, t.getBoundingClientRect().bottom) : 0) + "px"; };
+    fitTop(); setTimeout(fitTop, 300);
+    const canOf = (s) => perm === "all" || (perm === "pick" && allow.has(s.id));
+    function drawPerm() { Object.entries(permBtns).forEach(([k, b]) => { b.classList.toggle("on", k === perm); b.setAttribute("aria-checked", String(k === perm)); }); }
+    function drawSide() {
+      const on = studs.filter((s) => s.on).length, nw = studs.filter(canOf).length;
+      stat.textContent = on + "/" + studs.length + " em đang xem" + (perm === "view" ? "" : " · " + nw + " em được viết");
+      side.innerHTML = "";
+      side.append(h("div", { class: "bd-side-h" }, h("b", {}, "Học sinh"), h("span", {}, on + " đang xem"),
+        studs.some((s) => s.n) ? h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá nét của học sinh?", "Xoá mọi nét học sinh đã viết, vẽ trên bảng này. Nét của thầy cô giữ nguyên.", "Xoá nét",
+          async () => { await T("t_board_clear", { p_id: id }).catch(fail); pull(); }) }, "Xoá nét HS") : null));
+      side.append(h("p", { class: "bd-side-tip" }, perm === "view" ? "Bấm ✏️ cạnh tên để gọi em đó lên bảng." : perm === "all" ? "Bấm ✏️ để khoá riêng một em." : "Chỉ các em có ✏️ sáng được viết."));
+      side.append(h("ul", {}, studs.map((s) => h("li", { class: (s.on ? "on" : "") + (canOf(s) ? " can" : "") },
+        h("i", { class: "bd-dot", title: s.on ? "Đang xem bảng" : "Chưa vào bảng" }),
+        h("span", { class: "bd-nm" }, h("b", {}, s.name), h("small", {}, s.code + (s.n ? " · " + s.n + " nét" : ""))),
+        s.n ? h("button", { class: "bd-ib", title: "Xoá nét của " + s.name, "aria-label": "Xoá nét của " + s.name, onclick: async () => { await T("t_board_clear", { p_id: id, p_student: s.id }).catch(fail); pull(); } }, "🧽") : null,
+        h("button", { class: "bd-ib bd-pen" + (canOf(s) ? " on" : ""), title: canOf(s) ? "Đang được viết, bấm để khoá" : "Cho em này viết lên bảng", "aria-pressed": String(canOf(s)), "aria-label": "Cho " + s.name + " viết lên bảng", onclick: () => togglePen(s) }, "✏️")))));
+    }
+    async function save(np, na) {
+      const p0 = perm, a0 = allow; perm = np; allow = na; drawPerm(); drawSide();
+      try { await T("t_board_set", { p_id: id, p_perm: np, p_allow: [...na] }); }
+      catch (e) { perm = p0; allow = a0; drawPerm(); drawSide(); fail(e); }
+    }
+    function setPerm(k) {
+      if (k === perm) return;
+      if (k === "pick" && !allow.size) { KT.toast("Bấm ✏️ cạnh tên học sinh để chọn em được viết.", "ok"); if (!showSide) { showSide = true; room.classList.remove("no-side"); } }
+      save(k, allow);
+    }
+    function togglePen(s) {
+      let np = perm, na = new Set(allow);
+      if (perm === "all") { np = "pick"; na = new Set(studs.map((x) => x.id)); na.delete(s.id); }
+      else if (canOf(s)) na.delete(s.id);
+      else { np = "pick"; na.add(s.id); }
+      if (np === "pick" && !na.size) np = "view";
+      save(np, na);
+    }
+    async function pull() {
+      const sy = frame.sy(); if (pulling || !sy) return; pulling = true;
+      try { const r = await T("t_board_pull", { p_id: id, p_since: since }); sy.apply(r, false); since = Math.max(since, r.rev); studs = r.students || studs; drawSide(); } catch (e) { }
+      pulling = false;
+    }
+    drawPerm(); drawSide();
+    poll = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 1200);
   }
 
   function liveForm(s, after) {

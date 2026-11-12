@@ -68,6 +68,13 @@
     out.MC = Math.min(av.MC || 0, out.MC + extra);
     return out;
   };
+  /* ---------- bảng phụ lớp học: trang bangphu.html chạy trong khung, đồng bộ qua host ---------- */
+  KT.boardFrame = (host) => {
+    window.__bpHost = host;
+    const f = h("iframe", { class: "bd-frame", src: "bangphu.html", title: "Bảng phụ", allow: "fullscreen; clipboard-read; clipboard-write" });
+    f.sy = () => { try { return (f.contentWindow && f.contentWindow.__bpSY) || null; } catch (e) { return null; } };
+    return f;
+  };
   /* ---------- video ôn tập (TikTok / YouTube) ---------- */
   KT.videoSrc = (v) => v.p === "yt" ? "https://www.youtube-nocookie.com/embed/" + v.vid + "?rel=0&playsinline=1"
     : "https://www.tiktok.com/player/v1/" + v.vid + "?music_info=0&description=0&rel=0&controls=1&progress_bar=1&play_button=1&volume_control=1&fullscreen_button=1&timestamp=1";
