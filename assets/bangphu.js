@@ -459,7 +459,7 @@ const TL=[
  ['Đo · Vẽ',[['ang',IC.ang,'Đo góc'],['dist',IC.dist,'Độ dài'],['area',IC.area,'Diện tích'],['fn',IC.fn,'Đồ thị y=f(x)']]]];
 const HINT={cpy:'Bấm lần lượt <b>các điểm</b> tạo thành đa giác, bấm lại <b>điểm đầu</b> để khép kín, rồi bấm vào trong vùng đó và <b>kéo</b> bản sao ra chỗ trống (hoặc kéo thẳng từ một hình đã tô). Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>tên điểm</b> để dời tên sang chỗ khác · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
  pen:'Viết, vẽ tự do như bảng phấn. Lăn chuột để phóng to/thu nhỏ, giữ chuột phải để kéo bảng.',
- smart:'Viết bình thường – <b>chính nét chữ của thầy cô</b> được làm mềm mại: bỏ rung tay, nét thanh – đậm, vuốt nhọn đầu nét, dòng chữ bị nghiêng được nắn thẳng. (Vẽ hình bằng tay: chọn Bút → Vẽ hình.)',
+ smart:'Chọn loại bút (bi, dạ, lông, phấn, nét đứt, mũi tên) rồi viết bình thường – <b>chính nét chữ của thầy cô</b> được làm mềm mại: bỏ rung tay, nét thanh – đậm, vuốt nhọn đầu nét, dòng chữ bị nghiêng được nắn thẳng. (Vẽ hình bằng tay: chọn Bút → Vẽ hình.)',
  hl:'Tô dạ quang để nhấn mạnh (nét trong suốt).',erase:'Rê qua nét hoặc hình cần xóa (xóa một hình sẽ xóa cả các hình dựng từ nó).',
  laser:'Bút chỉ laser: vệt sáng tự mờ dần, không để lại dấu.',text:'Bấm vào bảng rồi gõ chữ, Enter để xong. Bấm đúp vào chữ (công cụ Chọn) để sửa.',pan:'Kéo để di chuyển bảng; lăn chuột để phóng to/thu nhỏ.',
  symP:'Bấm điểm cần lấy đối xứng, rồi bấm tâm đối xứng (một điểm).',symL:'Bấm điểm cần lấy đối xứng, rồi bấm trục đối xứng (một đường thẳng / đoạn thẳng).',
@@ -585,7 +585,7 @@ document.addEventListener('keydown',e=>{if(!body.classList.contains('on'))return
 function goPage(i){if(i<0||i>=pages.length)return;setTimeout(()=>{try{updHidBtn();updMode();if(!is3()&&(tool[0]==='3'||tool==='solid'))setTool('sel');if(is3()&&gdivs['Điểm'].contains(tbtn[tool]||null))setTool('sel')}catch(_){}},0);closeText();pi=i;sel=null;pend=[];act=null;inval();D();persist()}
 function setTool(id){if(__syDeny(id))return;cpyPend=[];cpyReady=false;closeText();try{xyzShow(id==='3xyz')}catch(_){}try{fmenu.style.display='none';hiFace=null}catch(_){}if(id!=='tri'&&id!=='quad'&&id!=='solid')try{closeMenu()}catch(_){}tool=id;pend=[];act=null;Object.entries(tbtn).forEach(([k,b])=>b.classList.toggle('on',k===id));try{tbtn.ax3.classList.toggle('on',showAx);tbtn.vert3.classList.toggle('on',vertMode);tbtn.rot3.classList.toggle('on',autoRot)}catch(_){}
   for(const g in SUB){const it=SUB[g][0].find(a=>a[0]===id);if(it){tbtn[g].classList.add('on');tbtn[g].querySelector('.i').innerHTML=IC[id];tbtn[g].title=it[1]}}
-  gCtx.innerHTML='';if(id==='circR')gCtx.appendChild(rWrap);if(id==='amk')gCtx.appendChild(amkWrap);if(id==='segc')gCtx.appendChild(segcWrap);if(id==='smk')gCtx.appendChild(smkWrap);if(id==='fill')gCtx.appendChild(fillWrap);if(id==='rat')gCtx.appendChild(ratWrap);if(id==='angc')gCtx.appendChild(angWrap);try{if(id==='pen')gCtx.appendChild(pkWrap);if(id==='smart')gCtx.appendChild(hwWrap);if(id!=='smart'&&hw.ids.length)hwFlush()}catch(_){}if(id==='fn'){gCtx.appendChild(fWrap);setTimeout(()=>fIn.focus(),0)}
+  gCtx.innerHTML='';if(id==='circR')gCtx.appendChild(rWrap);if(id==='amk')gCtx.appendChild(amkWrap);if(id==='segc')gCtx.appendChild(segcWrap);if(id==='smk')gCtx.appendChild(smkWrap);if(id==='fill')gCtx.appendChild(fillWrap);if(id==='rat')gCtx.appendChild(ratWrap);if(id==='angc')gCtx.appendChild(angWrap);try{if(id==='pen')gCtx.appendChild(pkWrap);if(id==='smart'){gCtx.appendChild(pkWrap);gCtx.appendChild(hwWrap);pkWrap.querySelectorAll('button').forEach(x=>{if(/Vẽ hình/.test(x.textContent))x.style.display='none'})}if(id==='pen')pkWrap.querySelectorAll('button').forEach(x=>x.style.display='');if(id!=='smart'&&hw.ids.length)hwFlush()}catch(_){}if(id==='fn'){gCtx.appendChild(fWrap);setTimeout(()=>fIn.focus(),0)}
   try{updHd()}catch(_){}c.style.cursor=id==='pan'?'grab':id==='sel'?'default':id==='text'?'text':id==='laser'||id==='erase'?'none':'crosshair';D()}
 
 /* ---------- Bút thông minh: nhận dạng nét ---------- */
@@ -862,7 +862,7 @@ function draw(clean){inval();drawBg(clean);const os=Pg().objs,now=performance.no
   if(!clean){popUpd();syncRp()}
   if(!clean){
     // nét đang vẽ
-    if(act&&act.k==='ink'){const q=act.scr;ctx.save();ctx.lineCap=ctx.lineJoin='round';ctx.strokeStyle=cm(tool==='hl'?hlCol():col);ctx.lineWidth=tool==='hl'?hlW():wid*(tool==='pen'?pkW():1);if(tool==='hl')ctx.globalAlpha=.38;if(tool==='pen'&&PK==='dut')ctx.setLineDash([wid*2.6,wid*2]);if(tool==='pen'&&PK==='hinh')ctx.setLineDash([2,6]);inkPath(q);ctx.stroke();ctx.restore()}
+    if(act&&act.k==='ink'){const q=act.scr;ctx.save();ctx.lineCap=ctx.lineJoin='round';ctx.strokeStyle=cm(tool==='hl'?hlCol():col);ctx.lineWidth=tool==='hl'?hlW():wid*((tool==='pen'||tool==='smart')&&PK!=='hinh'?pkW():1);if(tool==='hl')ctx.globalAlpha=.38;if((tool==='pen'||tool==='smart')&&PK==='dut')ctx.setLineDash([wid*2.6,wid*2]);if(tool==='pen'&&PK==='hinh')ctx.setLineDash([2,6]);inkPath(q);ctx.stroke();ctx.restore()}
     // xem trước khi dựng hình
     if(mouse&&pend.length&&!act){const M=mouse,pp=pend.filter(isP).map(id=>{const g=geo(id);return S(g.x,g.y)});ctx.save();ctx.strokeStyle='#6366f1';ctx.lineWidth=1.6;ctx.setLineDash([6,5]);
       if(tool==='circD'&&pp[0]){const mx=(pp[0][0]+M[0])/2,my=(pp[0][1]+M[1])/2;ctx.beginPath();ctx.arc(mx,my,Math.hypot(M[0]-pp[0][0],M[1]-pp[0][1])/2,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(pp[0][0],pp[0][1]);ctx.lineTo(M[0],M[1]);ctx.stroke()}
@@ -1535,7 +1535,7 @@ function beautify(q){if(q.length<3)return q;const xs=q.map(v=>v[0]),ys=q.map(v=>
   const st=Math.max(1.5,Math.min(3,dg/60));let r=rsmp(q,st);const sg=Math.max(1.5,Math.min(9,(2.2+dg*.035)*(.35+.4*HWS)/st));r=gsm(gsm(gsm(r,sg),sg*.8),sg*.6);
   const out=[r[0]];for(let i=1;i<r.length-1;i++){const a=out[out.length-1];if(Math.hypot(r[i][0]-a[0],r[i][1]-a[1])>=st*1.4)out.push(r[i])}out.push(r[r.length-1]);return out}
 function hwAdd(q){clearTimeout(hw.tm);let id=null;const b=beautify(q);
-  txn(()=>{id=add({t:'ink',pts:b.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col,w:wid*1.15/V().z,pk:'dep'})});hw.ids.push(id);hw.tm=setTimeout(hwFlush,1000)}
+  const k=(PK==='da'||PK==='hinh')?'dep':PK;txn(()=>{id=add({t:'ink',pts:b.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col,w:wid*(k==='dep'?1.15:pkW())/V().z,pk:k})});hw.ids.push(id);hw.tm=setTimeout(hwFlush,1000)}
 function hwFlush(){clearTimeout(hw.tm);const ids=hw.ids.filter(i=>byId(i));hw.ids=[];if(!hwLine.checked||ids.length<2)return;
   const os=ids.map(byId);let sx=0,sy=0,sw=0;const cs=os.map(o=>{let x=0,y=0;o.pts.forEach(v=>{x+=v[0];y+=v[1]});return [x/o.pts.length,y/o.pts.length,o.pts.length]});
   cs.forEach(c=>{sx+=c[0]*c[2];sy+=c[1]*c[2];sw+=c[2]});const mx=sx/sw,my=sy/sw;let sxx=0,sxy=0;cs.forEach(c=>{sxx+=c[2]*(c[0]-mx)**2;sxy+=c[2]*(c[0]-mx)*(c[1]-my)});
