@@ -453,7 +453,7 @@ const TL=[
  ['Không gian',[['p3m',IC['3pt'],'Điểm ▾'],['l3m',IC['3line'],'Đường ▾'],['pl3m',IC['3plane'],'Mặt phẳng ▾'],['3dist',IC['3dist'],'Độ dài'],['solid',IC.solid,'Khối ▾'],['vert3',IC.vert3,'Kéo theo chiều cao (Shift)'],['rot3',IC.rot3,'Tự xoay'],['ax3',IC['3ax'],'Trục Oxyz'],['view3',IC.view3,'Góc nhìn SGK']]],
  ['Kí hiệu',[['amk',IC.amk,'Kí hiệu góc'],['smk',IC.smk,'Kí hiệu cạnh'],['fill',IC.fill,'Tô màu đa giác'],['cpy',IC.cpy,'Tách hình (kéo bản sao)']]],
  ['Đo · Vẽ',[['ang',IC.ang,'Đo góc'],['dist',IC.dist,'Độ dài'],['area',IC.area,'Diện tích'],['fn',IC.fn,'Đồ thị y=f(x)']]]];
-const HINT={cpy:'Bấm vào <b>bên trong</b> một đa giác, vùng đã tô hoặc hình tròn rồi <b>kéo</b> bản sao ra chỗ trống. Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
+const HINT={cpy:'Bấm vào <b>bên trong</b> một đa giác, vùng đã tô hoặc hình tròn rồi <b>kéo</b> bản sao ra chỗ trống. Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>tên điểm</b> để dời tên sang chỗ khác · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
  pen:'Viết, vẽ tự do như bảng phấn. Lăn chuột để phóng to/thu nhỏ, giữ chuột phải để kéo bảng.',
  smart:'Vẽ phác bằng tay: nét thẳng → <b>đoạn thẳng</b>, vòng tròn → <b>đường tròn</b>, tam giác/tứ giác → <b>đa giác động</b>, chấm → <b>điểm</b>.',
  hl:'Tô dạ quang để nhấn mạnh (nét trong suốt).',erase:'Rê qua nét hoặc hình cần xóa (xóa một hình sẽ xóa cả các hình dựng từ nó).',
@@ -819,7 +819,8 @@ function measure(o,cc){lbBox.delete(o.id);
     lbBox.set(o.id,pill(s,X,Y,cc))}}
 function drawPt(o,g){const [X,Y]=S(g.x,g.y),free=o.t==='pt'||o.t==='3pt',on=!free&&canDrag(o),dark=bg==='den';
   ctx.save();ctx.beginPath();ctx.arc(X,Y,free||on?5.5:4.5,0,7);ctx.fillStyle=free?'#2563eb':on?'#38bdf8':(dark?'#e5e7eb':'#374151');ctx.fill();ctx.lineWidth=1.8;ctx.strokeStyle=dark?'#16332a':'#fff';ctx.stroke();
-  if(showLb&&o.n){ctx.font='bold 17px Segoe UI,Arial';ctx.textBaseline='bottom';ctx.lineWidth=4;ctx.strokeStyle=dark?'#16332a':'#ffffff';ctx.strokeText(o.n,X+7,Y-5);ctx.fillStyle=dark?'#f8fafc':(o.col&&o.col!=='#111827'&&o.col!=='#ffffff'?o.col:'#1e293b');ctx.fillText(o.n,X+7,Y-5)}ctx.restore()}
+  if(showLb&&o.n){ctx.font='bold 17px Segoe UI,Arial';ctx.textBaseline='bottom';ctx.lineWidth=4;ctx.strokeStyle=dark?'#16332a':'#ffffff';const lo=o.lo||[7,-5],LX=X+lo[0],LY=Y+lo[1];ctx.strokeText(o.n,LX,LY);ctx.fillStyle=dark?'#f8fafc':(o.col&&o.col!=='#111827'&&o.col!=='#ffffff'?o.col:'#1e293b');ctx.fillText(o.n,LX,LY);
+    try{const w=ctx.measureText(o.n).width;ptLb.set(o.id,[LX,LY-19,w,19]);if(sel===o.id||(act&&act.k==='plb'&&act.o===o)){ctx.setLineDash([3,3]);ctx.lineWidth=1.2;ctx.strokeStyle='#f59e0b';ctx.strokeRect(LX-3,LY-20,w+6,22);ctx.setLineDash([])}}catch(_){}}else ptLb.delete(o.id);ctx.restore()}
 const amkR=o=>o.st==='r'?18:o.st==='2'?32:o.st==='3'?38:28;
 function drawAmk(o,cc){const A=need(o.a),B=need(o.b),C=need(o.c),[XB,YB]=S(B.x,B.y),[XA,YA]=S(A.x,A.y),[XC,YC]=S(C.x,C.y);const u1=un(XA-XB,YA-YB),u2=un(XC-XB,YC-YB);if(!u1||!u2)return;
   const a1=Math.atan2(u1[1],u1[0]);let d=Math.atan2(u2[1],u2[0])-a1;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;if(Math.abs(d)<0.02||Math.abs(Math.abs(d)-Math.PI)<0.02)return;
@@ -1292,7 +1293,7 @@ c.addEventListener('pointerdown',e=>{const p=c.pos(e);$('#side').classList.remov
   else if(tool==='erase'){act={k:'erase',b:snap0()};eraseAt(p)}
   else if(tool==='laser'){act={k:'laser'};laser.push({x:p[0],y:p[1],t:performance.now(),brk:true})}
   else if(tool==='text')openText(p);
-  else if((tool==='sel'||tool==='cpy')&&cpyDown(p)){}else if(tool==='cpy'){}else if(tool==='sel'){const h=hitAt(p);sel=h;selAt=p;const o0=h!=null&&byId(h);
+  else if(tool==='sel'&&lbDown(p)){}else if((tool==='sel'||tool==='cpy')&&cpyDown(p)){}else if(tool==='cpy'){}else if(tool==='sel'){const h=hitAt(p);sel=h;selAt=p;const o0=h!=null&&byId(h);
     if(is3()&&(h==null||(o0.t[0]==='3'&&!canDrag(o0))))act={k:'rot',s:p,th:cam().th,ph:cam().ph};
     else if(h==null)act={k:'pan',s:p,ox:V().ox,oy:V().oy};
     else{const o=byId(h),b=snap0(),w=Wd(...p);
@@ -1332,7 +1333,7 @@ c.addEventListener('pointermove',e=>{const p=c.pos(e);if(ptrs.has(e.pointerId))p
       else if(o.t==='ax'||o.t==='pq'){const A=need(o.a),B=need(o.b),px=-(B.y-A.y),py=B.x-A.x,L2=px*px+py*py;
         const bx=o.t==='ax'?(A.x+B.x)/2:A.x,by=o.t==='ax'?(A.y+B.y)/2:A.y;let u=((x-bx)*px+(y-by)*py)/L2;if(Math.abs(u)<0.02)u=u<0?-0.02:0.02;o.u=u}
       else{const g=geo(o.on);if(g&&g.k==='L'){const [x1,y1,x2,y2]=g.l,dx=x2-x1,dy=y2-y1;o.u=((x-x1)*dx+(y-y1)*dy)/(dx*dx+dy*dy)}else if(g&&g.k==='C')o.u=Math.atan2(y-g.cy,x-g.cx)}}
-    else if(cpyMove(p)){}else if(k==='tr'||k==='ink2'){const [x,y]=Wd(...p);let dx=x-act.s[0],dy=y-act.s[1];if(snapOn&&k==='tr'){const s=gstep();dx=Math.round(dx/s)*s;dy=Math.round(dy/s)*s}
+    else if(lbMove(p)||cpyMove(p)){}else if(k==='tr'||k==='ink2'){const [x,y]=Wd(...p);let dx=x-act.s[0],dy=y-act.s[1];if(snapOn&&k==='tr'){const s=gstep();dx=Math.round(dx/s)*s;dy=Math.round(dy/s)*s}
       if(k==='tr')act.list.forEach((q,i)=>{q.x=act.orig[i][0]+dx;q.y=act.orig[i][1]+dy});else act.o.pts=act.orig.map(a=>[a[0]+dx,a[1]+dy])}
     inval()}
   else{const h=['pen','hl','smart','laser','text','pan'].includes(tool)?null:hitAt(p);if(h!==hov)hov=h;
@@ -1422,6 +1423,16 @@ function ratDeco(o,g){if(sel!==o.id&&hov!==o.id)return;const A=geo(o.a),B=geo(o.
   ctx.save();ctx.font='600 14px Segoe UI,Arial';ctx.textAlign='center';ctx.textBaseline='top';const t=ratLbl(o),w=ctx.measureText(t).width+14;
   ctx.fillStyle=dark?'rgba(15,23,42,.85)':'rgba(255,255,255,.92)';ctx.strokeStyle='#6366f1';ctx.lineWidth=1.2;rr(P[0]-w/2,P[1]+12,w,22,6);ctx.fill();ctx.stroke();
   ctx.fillStyle=dark?'#e0e7ff':'#3730a3';ctx.fillText(t,P[0],P[1]+15);ctx.restore()}
+
+/* ---------- KÉO TÊN ĐIỂM ---------- */
+// o.lo = [dx, dy]: vị trí tên so với điểm (điểm ảnh màn hình); mặc định [7, -5]
+const ptLb=new Map();
+function lbDown(p){let best=null;
+  for(const [id,bx] of ptLb){if(p[0]>=bx[0]-3&&p[0]<=bx[0]+bx[2]+3&&p[1]>=bx[1]-3&&p[1]<=bx[1]+bx[3]+3){const o=byId(id);if(!o||!vis(o))continue;const g=geo(id);if(!g||g.k!=='P')continue;
+    const q=S(g.x,g.y);if(Math.hypot(p[0]-q[0],p[1]-q[1])<8)continue;best=o}}
+  if(!best)return false;sel=best.id;selAt=p;act={k:'plb',o:best,b:snap0(),s:p,lo0:(best.lo||[7,-5]).slice()};return true}
+function lbMove(p){if(act.k!=='plb')return false;let dx=act.lo0[0]+p[0]-act.s[0],dy=act.lo0[1]+p[1]-act.s[1];const L=Math.hypot(dx+6,dy+8);if(L>80){dx=(dx+6)*80/L-6;dy=(dy+8)*80/L-8}
+  act.o.lo=[Math.round(dx),Math.round(dy)];return true}
 
 /* ---------- ĐỒNG BỘ VỚI LỚP HỌC (web Kiến Học Toán) ---------- */
 const HOST=window.__bpHost||null;
