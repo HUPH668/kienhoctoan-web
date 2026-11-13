@@ -356,7 +356,7 @@ function inPoly(p,q){let ins=false;for(let i=0,j=q.length-1;i<q.length;j=i++){co
 function hitDist(o,p){
   if(o.t==='ink'){const q=o.pts.map(a=>S(a[0],a[1]));let m=Math.hypot(p[0]-q[0][0],p[1]-q[0][1]);for(let i=1;i<q.length;i++)m=Math.min(m,dSeg(p[0],p[1],q[i-1][0],q[i-1][1],q[i][0],q[i][1]));return m-o.w*V().z/2}
   if(o.t==='img'){const [X,Y]=S(o.x,o.y),w=o.w*sc(),h=o.h*sc();return p[0]>=X&&p[0]<=X+w&&p[1]>=Y&&p[1]<=Y+h?8:1e9}
-  if(o.t==='text'){const [X,Y]=S(o.x,o.y),fs=o.size*V().z;ctx.font=fs+'px Segoe UI,Arial';const w=ctx.measureText(o.s).width;return p[0]>=X-4&&p[0]<=X+w+4&&p[1]>=Y-4&&p[1]<=Y+fs*1.25?0:1e9}
+  if(o.t==='text'){const [X,Y]=S(o.x,o.y),fs=o.size*V().z;ctx.font=fs+'px '+(o.ff?hwFont(o.ff):'Segoe UI,Arial');const w=ctx.measureText(o.s).width;return p[0]>=X-4&&p[0]<=X+w+4&&p[1]>=Y-4&&p[1]<=Y+fs*1.25?0:1e9}
   if(o.t==='amk'||o.t==='smk'){try{if(o.t==='smk'){const A=need(o.a),B=need(o.b),[X1,Y1]=S(A.x,A.y),[X2,Y2]=S(B.x,B.y);return Math.max(0,Math.hypot(p[0]-(X1+X2)/2,p[1]-(Y1+Y2)/2)-12)}
     const B=need(o.b),[X,Y]=S(B.x,B.y),d=Math.hypot(p[0]-X,p[1]-Y),r=amkR(o);return d<r+8?Math.max(0,Math.min(Math.abs(d-r),d<r?4:9)):1e9}catch(e){return 1e9}}
   const lb=lbBox.get(o.id);if(lb&&p[0]>=lb[0]&&p[0]<=lb[0]+lb[2]&&p[1]>=lb[1]&&p[1]<=lb[1]+lb[3])return 0;
@@ -459,7 +459,7 @@ const TL=[
  ['Đo · Vẽ',[['ang',IC.ang,'Đo góc'],['dist',IC.dist,'Độ dài'],['area',IC.area,'Diện tích'],['fn',IC.fn,'Đồ thị y=f(x)']]]];
 const HINT={cpy:'Bấm lần lượt <b>các điểm</b> tạo thành đa giác, bấm lại <b>điểm đầu</b> để khép kín, rồi bấm vào trong vùng đó và <b>kéo</b> bản sao ra chỗ trống (hoặc kéo thẳng từ một hình đã tô). Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>tên điểm</b> để dời tên sang chỗ khác · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
  pen:'Viết, vẽ tự do như bảng phấn. Lăn chuột để phóng to/thu nhỏ, giữ chuột phải để kéo bảng.',
- smart:'Vẽ phác bằng tay: nét thẳng → <b>đoạn thẳng</b>, vòng tròn → <b>đường tròn</b>, tam giác/tứ giác → <b>đa giác động</b>, chấm → <b>điểm</b>.',
+ smart:'Viết bình thường – <b>chính nét chữ của thầy cô</b> được làm mềm mại: bỏ rung tay, nét thanh – đậm, vuốt nhọn đầu nét, dòng chữ bị nghiêng được nắn thẳng. (Vẽ hình bằng tay: chọn Bút → Vẽ hình.)',
  hl:'Tô dạ quang để nhấn mạnh (nét trong suốt).',erase:'Rê qua nét hoặc hình cần xóa (xóa một hình sẽ xóa cả các hình dựng từ nó).',
  laser:'Bút chỉ laser: vệt sáng tự mờ dần, không để lại dấu.',text:'Bấm vào bảng rồi gõ chữ, Enter để xong. Bấm đúp vào chữ (công cụ Chọn) để sửa.',pan:'Kéo để di chuyển bảng; lăn chuột để phóng to/thu nhỏ.',
  symP:'Bấm điểm cần lấy đối xứng, rồi bấm tâm đối xứng (một điểm).',symL:'Bấm điểm cần lấy đối xứng, rồi bấm trục đối xứng (một đường thẳng / đoạn thẳng).',
@@ -585,7 +585,7 @@ document.addEventListener('keydown',e=>{if(!body.classList.contains('on'))return
 function goPage(i){if(i<0||i>=pages.length)return;setTimeout(()=>{try{updHidBtn();updMode();if(!is3()&&(tool[0]==='3'||tool==='solid'))setTool('sel');if(is3()&&gdivs['Điểm'].contains(tbtn[tool]||null))setTool('sel')}catch(_){}},0);closeText();pi=i;sel=null;pend=[];act=null;inval();D();persist()}
 function setTool(id){if(__syDeny(id))return;cpyPend=[];cpyReady=false;closeText();try{xyzShow(id==='3xyz')}catch(_){}try{fmenu.style.display='none';hiFace=null}catch(_){}if(id!=='tri'&&id!=='quad'&&id!=='solid')try{closeMenu()}catch(_){}tool=id;pend=[];act=null;Object.entries(tbtn).forEach(([k,b])=>b.classList.toggle('on',k===id));try{tbtn.ax3.classList.toggle('on',showAx);tbtn.vert3.classList.toggle('on',vertMode);tbtn.rot3.classList.toggle('on',autoRot)}catch(_){}
   for(const g in SUB){const it=SUB[g][0].find(a=>a[0]===id);if(it){tbtn[g].classList.add('on');tbtn[g].querySelector('.i').innerHTML=IC[id];tbtn[g].title=it[1]}}
-  gCtx.innerHTML='';if(id==='circR')gCtx.appendChild(rWrap);if(id==='amk')gCtx.appendChild(amkWrap);if(id==='segc')gCtx.appendChild(segcWrap);if(id==='smk')gCtx.appendChild(smkWrap);if(id==='fill')gCtx.appendChild(fillWrap);if(id==='rat')gCtx.appendChild(ratWrap);if(id==='angc')gCtx.appendChild(angWrap);if(id==='fn'){gCtx.appendChild(fWrap);setTimeout(()=>fIn.focus(),0)}
+  gCtx.innerHTML='';if(id==='circR')gCtx.appendChild(rWrap);if(id==='amk')gCtx.appendChild(amkWrap);if(id==='segc')gCtx.appendChild(segcWrap);if(id==='smk')gCtx.appendChild(smkWrap);if(id==='fill')gCtx.appendChild(fillWrap);if(id==='rat')gCtx.appendChild(ratWrap);if(id==='angc')gCtx.appendChild(angWrap);try{if(id==='pen')gCtx.appendChild(pkWrap);if(id==='smart')gCtx.appendChild(hwWrap);if(id!=='smart'&&hw.ids.length)hwFlush()}catch(_){}if(id==='fn'){gCtx.appendChild(fWrap);setTimeout(()=>fIn.focus(),0)}
   try{updHd()}catch(_){}c.style.cursor=id==='pan'?'grab':id==='sel'?'default':id==='text'?'text':id==='laser'||id==='erase'?'none':'crosshair';D()}
 
 /* ---------- Bút thông minh: nhận dạng nét ---------- */
@@ -782,8 +782,8 @@ function shape(o,g,cc,lw,under){ // vẽ hình dạng (dùng cho cả viền n�
       if(sel===o.id&&!o.lock){ctx.fillStyle='#fff';ctx.strokeStyle='#f59e0b';ctx.lineWidth=2;ctx.fillRect(X+w-7,Y+h-7,14,14);ctx.strokeRect(X+w-7,Y+h-7,14,14)}}
     else{const im=imgOf(o.key);if(im&&im.complete&&im.naturalWidth)ctx.drawImage(im,X,Y,w,h);else{ctx.strokeStyle='#94a3b8';ctx.setLineDash([6,4]);ctx.strokeRect(X,Y,w,h)}}ctx.restore();return}
   ctx.save();ctx.strokeStyle=cc;ctx.lineWidth=lw;ctx.lineCap=ctx.lineJoin='round';
-  if(o.t==='ink'){const q=o.pts.map(a=>S(a[0],a[1]));if(o.hl&&!under){ctx.globalAlpha=.38;ctx.lineCap='square'}inkPath(q);ctx.stroke()}
-  else if(o.t==='text'){const [X,Y]=S(o.x,o.y),fs=o.size*V().z;ctx.font=fs+'px Segoe UI,Arial';ctx.textBaseline='top';if(under){const w=ctx.measureText(o.s).width;ctx.globalAlpha=.3;ctx.fillStyle=cc;rr(X-5,Y-4,w+10,fs*1.25+8,6);ctx.fill()}else{ctx.fillStyle=cc;ctx.fillText(o.s,X,Y)}}
+  if(o.t==='ink'){const q=o.pts.map(a=>S(a[0],a[1]));if(o.hl&&!under){ctx.globalAlpha=.38;ctx.lineCap='square'}if(!(o.pk&&!under&&inkKind(o,q,lw,cc))){inkPath(q);ctx.stroke()}}
+  else if(o.t==='text'){const [X,Y]=S(o.x,o.y),fs=o.size*V().z;ctx.font=fs+'px '+(o.ff?hwFont(o.ff):'Segoe UI,Arial');ctx.textBaseline='top';if(under){const w=ctx.measureText(o.s).width;ctx.globalAlpha=.3;ctx.fillStyle=cc;rr(X-5,Y-4,w+10,fs*1.25+8,6);ctx.fill()}else{ctx.fillStyle=cc;ctx.fillText(o.s,X,Y)}}
   else if(g.k==='L'){const e=lineEnds(g);ctx.beginPath();ctx.moveTo(e[0],e[1]);ctx.lineTo(e[2],e[3]);ctx.stroke()}
   else if(g.k==='C'){const [X,Y]=S(g.cx,g.cy);ctx.beginPath();ctx.arc(X,Y,g.r*sc(),0,7);ctx.stroke()}
   else if(g.k==='G'){const q=g.p.map(a=>S(a[0],a[1]));ctx.beginPath();q.forEach((a,i)=>i?ctx.lineTo(a[0],a[1]):ctx.moveTo(a[0],a[1]));ctx.closePath();
@@ -858,11 +858,11 @@ function draw(clean){inval();drawBg(clean);const os=Pg().objs,now=performance.no
     if(o.t==='ink'){shape(o,null,cm(o.col),o.w*V().z);return}if(o.t==='text'){shape(o,null,cm(o.col),1);return}
     const g=geo(o.id);if(!g)return;if(o.t==='reg')return;if(o.t==='amk'||o.t==='smk'){try{(o.t==='amk'?drawAmk:drawSmk)(o,cm(o.col))}catch(e){}return}shape(o,g,cm(o.col),o.t==='fn'?2.6:2.4);if(o.t==='cpy')try{cpyDeco(o,g)}catch(e){}if(o.t==='tanl')try{tanDeco(o,g)}catch(e){}if(o.t==='perp')perpMark(o,g,cm(o.col));if(o.t==='cao'||o.t==='tuyen')try{footMark(o,g,cm(o.col))}catch(e){}});
   each(o=>MS.includes(o.t),o=>{marks(o.id);if(geo(o.id))try{measure(o,o.col==='#111827'?(bg==='den'?'#5eead4':'#0f766e'):cm(o.col))}catch(e){}});
-  if(!clean)try{cpyPrev();tanPrev()}catch(e){}each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
+  if(!clean)try{cpyPrev();tanPrev();hwPrev()}catch(e){}each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
   if(!clean){popUpd();syncRp()}
   if(!clean){
     // nét đang vẽ
-    if(act&&act.k==='ink'){const q=act.scr;ctx.save();ctx.lineCap=ctx.lineJoin='round';ctx.strokeStyle=cm(tool==='hl'?hlCol():col);ctx.lineWidth=tool==='hl'?hlW():wid;if(tool==='hl')ctx.globalAlpha=.38;if(tool==='smart')ctx.setLineDash([2,6]);inkPath(q);ctx.stroke();ctx.restore()}
+    if(act&&act.k==='ink'){const q=act.scr;ctx.save();ctx.lineCap=ctx.lineJoin='round';ctx.strokeStyle=cm(tool==='hl'?hlCol():col);ctx.lineWidth=tool==='hl'?hlW():wid*(tool==='pen'?pkW():1);if(tool==='hl')ctx.globalAlpha=.38;if(tool==='pen'&&PK==='dut')ctx.setLineDash([wid*2.6,wid*2]);if(tool==='pen'&&PK==='hinh')ctx.setLineDash([2,6]);inkPath(q);ctx.stroke();ctx.restore()}
     // xem trước khi dựng hình
     if(mouse&&pend.length&&!act){const M=mouse,pp=pend.filter(isP).map(id=>{const g=geo(id);return S(g.x,g.y)});ctx.save();ctx.strokeStyle='#6366f1';ctx.lineWidth=1.6;ctx.setLineDash([6,5]);
       if(tool==='circD'&&pp[0]){const mx=(pp[0][0]+M[0])/2,my=(pp[0][1]+M[1])/2;ctx.beginPath();ctx.arc(mx,my,Math.hypot(M[0]-pp[0][0],M[1]-pp[0][1])/2,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(pp[0][0],pp[0][1]);ctx.lineTo(M[0],M[1]);ctx.stroke()}
@@ -1348,8 +1348,8 @@ function endPtr(e){ptrs.delete(e.pointerId);cancelLp();if(pinch){if(ptrs.size<2)
   if(!act)return;const a=act;act=null;
   if(a.k==='g3'){txn(()=>geoClick(a.s))}
   else if(a.k==='rot'){persist();if(tool!=='pan')c.style.cursor=tool==='sel'?'default':'crosshair'}
-  else if(a.k==='ink'){const q=a.scr;if(tool==='smart')txn(()=>smartInk(q));
-    else txn(()=>add({t:'ink',pts:q.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col:tool==='hl'?hlCol():col,w:(tool==='hl'?hlW():wid)/V().z,hl:tool==='hl'||undefined}))}
+  else if(a.k==='ink'){const q=a.scr;if(tool==='smart')hwAdd(q);else if(tool==='pen'&&PK==='hinh')txn(()=>smartInk(q));
+    else txn(()=>add({t:'ink',pts:q.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col:tool==='hl'?hlCol():col,w:(tool==='hl'?hlW():wid*(tool==='pen'?pkW():1))/V().z,hl:tool==='hl'||undefined,pk:tool==='pen'&&PK!=='da'?PK:undefined}))}
   else if(a.b&&snap0()!==a.b)pushUndo(a.b);
   else if(a.k==='pan'||a.k==='rot')persist();
   if(tool==='pan')c.style.cursor='grab';inval();D()}
@@ -1501,6 +1501,55 @@ function tanPrev(){if(tool!=='tanO'||pend.length!==1||!mouse)return;const M=geo(
   ctx.restore()}
 function tanDeco(o,g){const A=geo(o.a),h=geo(o.o);if(!A||!h)return;const P=S(A.x,A.y),C=S(h.cx,h.cy),u=un(C[0]-P[0],C[1]-P[1]);if(!u)return;const v=[-u[1],u[0]],m=13;
   ctx.save();ctx.strokeStyle=cm(o.col||'#e11d48');ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(P[0]+u[0]*m,P[1]+u[1]*m);ctx.lineTo(P[0]+(u[0]+v[0])*m,P[1]+(u[1]+v[1])*m);ctx.lineTo(P[0]+v[0]*m,P[1]+v[1]*m);ctx.stroke();ctx.restore()}
+
+/* ---------- NHIỀU LOẠI BÚT ---------- */
+// o.pk trên nét mực: bi (mảnh), long (thanh đậm theo tốc độ), phan (phấn), dut (nét đứt), ten (mũi tên); không có = bút dạ
+let PK='da';
+const PKS=[['bi','🖊️ Bút bi'],['da','🖍 Bút dạ'],['long','🖌️ Bút lông'],['phan','🧂 Phấn'],['dut','┄ Nét đứt'],['ten','➜ Mũi tên'],['hinh','📐 Vẽ hình']];
+const pkWrap=el('span','bp-pk');
+const pkSeg=seg(pkWrap,PKS,PK,v=>{PK=v;say({bi:'Bút bi: nét mảnh, đều.',da:'Bút dạ: nét đều, rõ.',long:'Bút lông: viết nhanh nét thanh, viết chậm nét đậm.',phan:'Phấn: nét như viết phấn trên bảng.',dut:'Nét đứt: vẽ đường gióng, đường phụ.',ten:'Mũi tên: nét kết thúc bằng đầu mũi tên.',hinh:'Vẽ hình: nét thẳng → đoạn thẳng, vòng → đường tròn, tam giác/tứ giác → đa giác (hình động).'}[v])});
+const pkW=()=>PK==='bi'?.55:PK==='long'?1.5:PK==='phan'?1.4:1;
+function inkKind(o,q,lw,cc){const k=o.pk;if(!k)return false;
+  if(k==='bi'){inkPath(q);ctx.stroke();return true}
+  if(k==='dep'){depDraw(q,lw);return true}
+  if(k==='dut'){ctx.setLineDash([lw*2.6,lw*2]);inkPath(q);ctx.stroke();ctx.setLineDash([]);return true}
+  if(k==='ten'){inkPath(q);ctx.stroke();if(q.length>1){let j=q.length-2;const z=q[q.length-1];while(j>0&&Math.hypot(z[0]-q[j][0],z[1]-q[j][1])<lw*4)j--;const u=un(z[0]-q[j][0],z[1]-q[j][1]);
+      if(u){const L=Math.max(12,lw*4.5),W=L*.55;ctx.fillStyle=cc;ctx.beginPath();ctx.moveTo(z[0]+u[0]*lw*.6,z[1]+u[1]*lw*.6);ctx.lineTo(z[0]-u[0]*L-u[1]*W,z[1]-u[1]*L+u[0]*W);ctx.lineTo(z[0]-u[0]*L*.7,z[1]-u[1]*L*.7);ctx.lineTo(z[0]-u[0]*L+u[1]*W,z[1]-u[1]*L-u[0]*W);ctx.closePath();ctx.fill()}}return true}
+  if(k==='long'){if(q.length<2){inkPath(q);ctx.stroke();return true}const n=q.length;let wPrev=lw*.7;
+    for(let i=1;i<n;i++){const d=Math.hypot(q[i][0]-q[i-1][0],q[i][1]-q[i-1][1]),t=Math.min(1,i/4,(n-i)/4+.15),target=lw*Math.max(.28,Math.min(1.15,1.25-d/26))*Math.max(.35,t);
+      const w=wPrev*.6+target*.4;wPrev=w;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(q[i-1][0],q[i-1][1]);ctx.lineTo(q[i][0],q[i][1]);ctx.stroke()}return true}
+  if(k==='phan'){ctx.globalAlpha*=.62;inkPath(q);ctx.stroke();ctx.lineWidth=lw*.55;ctx.setLineDash([1.5,2.5]);ctx.globalAlpha=Math.min(1,ctx.globalAlpha*1.3);inkPath(q.map((a,i)=>[a[0]+((i*7)%3-1)*lw*.18,a[1]+((i*5)%3-1)*lw*.18]));ctx.stroke();ctx.setLineDash([]);return true}
+  return false}
+
+/* ---------- BÚT THÔNG MINH: làm đẹp chính nét chữ của thầy cô ---------- */
+// mỗi nét: lấy mẫu đều, làm mượt (bỏ rung tay), nét thanh – đậm, vuốt nhọn hai đầu (o.pk='dep');
+// dừng bút ~1 giây: nắn thẳng dòng chữ bị nghiêng, giữ nguyên hình dáng chữ
+const hw={ids:[],tm:null};const hwWrap=el('span','bp-hw');
+let HWS=2;hwWrap.append(document.createTextNode('Độ mềm: '));seg(hwWrap,[['1','Nhẹ'],['2','Vừa'],['3','Nhiều']],'2',v=>{HWS=+v});
+const chk2=el('label','');chk2.innerHTML=' <input type="checkbox" checked> Nắn thẳng dòng';hwWrap.append(chk2);const hwLine=chk2.querySelector('input');
+function rsmp(q,st){if(q.length<2)return q.slice();const r=[q[0]];let acc=0;for(let i=1;i<q.length;i++){let a=q[i-1],b=q[i],d=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  while(acc+d>=st){const t=(st-acc)/d;a=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];r.push(a);d=Math.hypot(b[0]-a[0],b[1]-a[1]);acc=0}acc+=d}r.push(q[q.length-1]);return r}
+function gsm(q,sg){const n=q.length;if(n<4)return q.slice();const R=Math.ceil(sg*2.5),w=[];for(let k=-R;k<=R;k++)w.push(Math.exp(-k*k/(2*sg*sg)));
+  return q.map((v,i)=>{if(i===0||i===n-1)return v;const r=Math.min(R,i,n-1-i);let sx=0,sy=0,sw=0;for(let k=-r;k<=r;k++){const ww=w[k+R];sx+=q[i+k][0]*ww;sy+=q[i+k][1]*ww;sw+=ww}return [sx/sw,sy/sw]})}
+function beautify(q){if(q.length<3)return q;const xs=q.map(v=>v[0]),ys=q.map(v=>v[1]),dg=Math.hypot(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));
+  const st=Math.max(1.5,Math.min(3,dg/60));let r=rsmp(q,st);const sg=Math.max(1.5,Math.min(9,(2.2+dg*.035)*(.35+.4*HWS)/st));r=gsm(gsm(gsm(r,sg),sg*.8),sg*.6);
+  const out=[r[0]];for(let i=1;i<r.length-1;i++){const a=out[out.length-1];if(Math.hypot(r[i][0]-a[0],r[i][1]-a[1])>=st*1.4)out.push(r[i])}out.push(r[r.length-1]);return out}
+function hwAdd(q){clearTimeout(hw.tm);let id=null;const b=beautify(q);
+  txn(()=>{id=add({t:'ink',pts:b.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col,w:wid*1.15/V().z,pk:'dep'})});hw.ids.push(id);hw.tm=setTimeout(hwFlush,1000)}
+function hwFlush(){clearTimeout(hw.tm);const ids=hw.ids.filter(i=>byId(i));hw.ids=[];if(!hwLine.checked||ids.length<2)return;
+  const os=ids.map(byId);let sx=0,sy=0,sw=0;const cs=os.map(o=>{let x=0,y=0;o.pts.forEach(v=>{x+=v[0];y+=v[1]});return [x/o.pts.length,y/o.pts.length,o.pts.length]});
+  cs.forEach(c=>{sx+=c[0]*c[2];sy+=c[1]*c[2];sw+=c[2]});const mx=sx/sw,my=sy/sw;let sxx=0,sxy=0;cs.forEach(c=>{sxx+=c[2]*(c[0]-mx)**2;sxy+=c[2]*(c[0]-mx)*(c[1]-my)});
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;os.forEach(o=>o.pts.forEach(v=>{x0=Math.min(x0,v[0]);x1=Math.max(x1,v[0]);y0=Math.min(y0,v[1]);y1=Math.max(y1,v[1])}));
+  if(sxx<1e-9||(x1-x0)<2.2*(y1-y0))return;const a=Math.atan(sxy/sxx),deg=Math.abs(a*180/Math.PI);if(deg<1.5||deg>14)return;
+  const ca=Math.cos(-a),sa=Math.sin(-a);txn(()=>os.forEach(o=>{o.pts=o.pts.map(v=>{const dx=v[0]-mx,dy=v[1]-my;return [+(mx+dx*ca-dy*sa).toFixed(4),+(my+dx*sa+dy*ca).toFixed(4)]})}));
+  say('✨ Đã nắn thẳng dòng chữ (lệch '+fmt(deg,1)+'°). Bấm ↶ nếu muốn giữ độ nghiêng cũ.');inval();D()}
+function depDraw(q,lw){const n=q.length;let L=0;const cum=[0];for(let i=1;i<n;i++){L+=Math.hypot(q[i][0]-q[i-1][0],q[i][1]-q[i-1][1]);cum.push(L)}
+  if(n<2||L<lw*2.5){ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.arc(q[0][0],q[0][1],lw*.7,0,7);ctx.fill();return}
+  const tin=Math.min(L*.18,lw*5),tout=Math.min(L*.28,lw*7);let wp=null;
+  for(let i=1;i<n;i++){const s=cum[i],d=s-cum[i-1];let f=1;if(s<tin)f=.45+.55*s/tin;if(L-s<tout)f=Math.min(f,.3+.7*(L-s)/tout);
+    const sp=Math.max(.75,Math.min(1.08,1.15-d/40)),w=lw*f*sp;const ww=wp==null?w:wp*.5+w*.5;wp=ww;
+    ctx.lineWidth=ww;ctx.beginPath();ctx.moveTo(q[i-1][0],q[i-1][1]);ctx.lineTo(q[i][0],q[i][1]);ctx.stroke()}}
+const hwFont=f=>'Segoe UI,Arial';function hwPrev(){}
 
 /* ---------- ĐỒNG BỘ VỚI LỚP HỌC (web Kiến Học Toán) ---------- */
 const HOST=window.__bpHost||null;
