@@ -257,7 +257,7 @@ const V=()=>Pg().view,sc=()=>50*V().z;
 const S=(x,y)=>[V().ox+x*sc(),V().oy-y*sc()];
 const Wd=(X,Y)=>[(X-V().ox)/sc(),(V().oy-Y)/sc()];
 const byId=id=>Pg().objs.find(o=>o.id===id);
-const PTS=new Set(['rat','pt','pon','ft','eqp','mid','int','sym','rot','ax','pq','pd','mir','par4','ctr','3pt','3pon','3mid','3tr','3par4','3sqv','3up','3vert','3apex','3int','3pol','3foot','3footp','3onp','3ons','3int2','3intlp']);const DRG=new Set(['rat','pt','pon','eqp','ax','pq','pd','3pt','3pon','3vert','3apex','3pol','3onp','3ons']);const canDrag=o=>DRG.has(o.t)||(o.t==='rot'&&o.dr);
+const PTS=new Set(['tanp','rat','pt','pon','ft','eqp','mid','int','sym','rot','ax','pq','pd','mir','par4','ctr','3pt','3pon','3mid','3tr','3par4','3sqv','3up','3vert','3apex','3int','3pol','3foot','3footp','3onp','3ons','3int2','3intlp']);const DRG=new Set(['rat','pt','pon','eqp','ax','pq','pd','3pt','3pon','3vert','3apex','3pol','3onp','3ons']);const canDrag=o=>DRG.has(o.t)||(o.t==='rot'&&o.dr);
 const refs=o=>{const r=[];for(const k of ['a','b','c','d','p','l','o','on','top'])if(typeof o[k]==='number')r.push(o[k]);if(o.ps)r.push(...o.ps);for(const k of ['ln','pl','l1','l2']){const v=o[k];if(Array.isArray(v))r.push(...v);else if(typeof v==='number')r.push(v)}return r};
 const un=(x,y)=>{const l=Math.hypot(x,y);return l<1e-12?null:[x/l,y/l]};
 const cl01=u=>Math.max(0,Math.min(1,u));
@@ -291,6 +291,8 @@ function calc(o){const t=o.t;
   if(t==='tuyen'){const A=need(o.a),B=need(o.b),C=need(o.c),mx=(B.x+C.x)/2,my=(B.y+C.y)/2;if(Math.hypot(A.x-mx,A.y-my)<1e-9)return;return {k:'L',kind:'seg',l:[A.x,A.y,mx,my]}}
   if(t==='cao'){const A=need(o.a),B=need(o.b),C=need(o.c),dx=C.x-B.x,dy=C.y-B.y,L2=dx*dx+dy*dy;if(L2<1e-12)return;const u=((A.x-B.x)*dx+(A.y-B.y)*dy)/L2,fx=B.x+u*dx,fy=B.y+u*dy;
     if(Math.hypot(A.x-fx,A.y-fy)<1e-9)return;return {k:'L',kind:'seg',l:[A.x,A.y,fx,fy],u}}
+  if(t==='tanp'){const g=geo(o.o),M=need(o.p);if(!g||g.k!=='C')return;const ts=tanPts(M,g);if(!ts)return;const q=ts[o.s>0?0:1];return Pt(q.x,q.y)}
+  if(t==='tanl'){const g=geo(o.o),A=need(o.a);if(!g||g.k!=='C')return;const dx=A.x-g.cx,dy=A.y-g.cy;if(Math.hypot(dx,dy)<1e-9)return;return {k:'L',kind:'line',l:[A.x,A.y,A.x-dy,A.y+dx]}}
   if(t==='rat'){const A=need(o.a),B=need(o.b),s=(o.m||1)+(o.nn||1),k=(o.m||1)/s;return Pt(A.x+k*(B.x-A.x),A.y+k*(B.y-A.y))}
   if(t==='mid'){const a=need(o.a),b=need(o.b);return Pt((a.x+b.x)/2,(a.y+b.y)/2)}
   if(t==='eqp'){const A=need(o.a),P=need(o.c),Q=need(o.d),L=Math.hypot(Q.x-P.x,Q.y-P.y);if(L<1e-9)return;let ux,uy;
@@ -395,6 +397,8 @@ const IC={
  sym:sv(dt(5,18)+dt(19,6)+`<circle cx="12" cy="12" r="2.2"/><path d="M6.5 16.7l4-3.4M13.5 10.7l4-3.4" stroke-dasharray="2 2"/>`),
  seg:sv(`<path d="M4 18L20 6"/>`+dt(4,18)+dt(20,6)),
  line:sv(`<path d="M1 21L23 3"/>`+dt(7,16)+dt(17,8)),
+ tanO:sv(`<circle cx="14" cy="14" r="7"/><path d="M2 5L21.5 10.6" stroke="#16a34a"/>`+dt(2,5)+dt(13,8.1,'#e11d48')),
+ tanA:sv(`<circle cx="12" cy="14" r="7"/><path d="M3 7H21" stroke="#16a34a"/><path d="M12 14V7" stroke="#e11d48" stroke-dasharray="2 2"/>`+dt(12,7,'#e11d48')),
  angc:sv(`<path d="M4 19H21M4 19L16 6"/><path d="M10 19A6 6 0 0 0 8.2 14.6" stroke="#16a34a" stroke-width="1.6"/>`+dt(4,19)),
  ray:sv(`<path d="M5 18L23 4"/>`+dt(5,18)+dt(13,11.8)),
  tri:sv(`<path d="M12 3.5L21 19.5H3Z" fill="#fde68a"/><path d="M9 21.5l3 2 3-2" stroke="#6366f1"/>`+dt(12,3.5)+dt(3,19.5)+dt(21,19.5)),
@@ -477,7 +481,7 @@ const HINT={cpy:'Bấm lần lượt <b>các điểm</b> tạo thành đa giác,
  '3int':'Bấm 2 đường thẳng / cạnh cùng một mặt phẳng, hoặc 1 đường thẳng + 1 mặt phẳng → giao điểm (tự kéo dài nếu cần).','3poly':'Bấm lần lượt các điểm, bấm lại điểm đầu để tạo mặt (thiết diện) được tô màu.',
  '3dist':'Bấm 2 điểm (hoặc 1 cạnh) → độ dài.','solid':'Chọn hình trong danh sách “Khối ▾”, rồi bấm lên mặt đáy để đặt hình.',
  pt:'Bấm để đặt điểm (nhấn giữ một điểm để đổi tên). Bấm lên đường thẳng/đường tròn → <b>điểm thuộc đường</b>; bấm vào chỗ hai đường cắt nhau → <b>giao điểm</b>.',
- mid:'Bấm 2 điểm (hoặc bấm 1 đoạn thẳng).',angc:'Nhập số đo góc và chọn chiều ở ô bên cạnh. Bấm <b>đỉnh O</b> rồi bấm <b>một điểm A trên cạnh có sẵn</b> (hoặc bấm vào đoạn thẳng, gần đầu O) → vẽ tia OB với góc AOB đúng số đo.',rat:'Nhập tỉ lệ <b>AM : MB</b> ở ô bên cạnh, rồi bấm điểm đầu A và điểm cuối B (hoặc bấm vào đoạn thẳng, gần đầu A). Kéo điểm vừa tạo dọc đoạn thẳng để đổi tỉ lệ.',int:'Bấm lần lượt 2 đường (thẳng hoặc tròn) để lấy giao điểm.',sym:'Bấm điểm cần lấy đối xứng, rồi bấm tâm đối xứng (một điểm) hoặc trục đối xứng (một đường thẳng).',
+ mid:'Bấm 2 điểm (hoặc bấm 1 đoạn thẳng).',tanO:'Bấm <b>một điểm ở ngoài đường tròn</b>, rồi đưa chuột lại gần đường tròn: khi đường <b>khớp thành tiếp tuyến</b> (xanh lá) thì bấm → tiếp tuyến, tiếp điểm và bán kính vuông góc.',tanA:'Bấm <b>một điểm trên đường tròn</b> (hoặc bấm thẳng lên đường tròn) → tiếp tuyến tại điểm đó, vuông góc với bán kính.',angc:'Nhập số đo góc và chọn chiều ở ô bên cạnh. Bấm <b>đỉnh O</b> rồi bấm <b>một điểm A trên cạnh có sẵn</b> (hoặc bấm vào đoạn thẳng, gần đầu O) → vẽ tia OB với góc AOB đúng số đo.',rat:'Nhập tỉ lệ <b>AM : MB</b> ở ô bên cạnh, rồi bấm điểm đầu A và điểm cuối B (hoặc bấm vào đoạn thẳng, gần đầu A). Kéo điểm vừa tạo dọc đoạn thẳng để đổi tỉ lệ.',int:'Bấm lần lượt 2 đường (thẳng hoặc tròn) để lấy giao điểm.',sym:'Bấm điểm cần lấy đối xứng, rồi bấm tâm đối xứng (một điểm) hoặc trục đối xứng (một đường thẳng).',
  seg:'Bấm 2 điểm.',line:'Bấm 2 điểm.',ray:'Bấm gốc tia, rồi bấm 1 điểm trên tia.',quad:'Chọn loại tứ giác trong danh sách xổ xuống, rồi bấm vào bảng để đặt. Kéo các đỉnh xanh: hình luôn giữ đúng tính chất (song song, cân, vuông…).',tri:'Chọn loại tam giác trong danh sách xổ xuống, rồi bấm vào bảng để đặt. Kéo các đỉnh xanh: tam giác luôn giữ đúng tính chất (đều, cân, vuông…).',poly:'Bấm lần lượt các đỉnh, bấm lại đỉnh đầu (hoặc Enter) để khép kín.',
  perp:'Bấm 1 đường thẳng hoặc 1 cạnh hình, rồi bấm 1 điểm → đường vuông góc.',par:'Bấm 1 đường thẳng hoặc 1 cạnh hình, rồi bấm 1 điểm → đường song song.',tt:'Bấm 2 điểm (hoặc 1 đoạn thẳng) → đường trung trực.',pg:'Bấm 3 điểm A, O (đỉnh), B → tia phân giác góc AOB.',
  circ:'Bấm tâm, rồi bấm 1 điểm nằm trên đường tròn.',circR:'Nhập bán kính r, rồi bấm vào vị trí tâm.',circ3:'Bấm 3 điểm → đường tròn đi qua 3 điểm.',circD:'Bấm 2 điểm A, B → đường tròn đường kính AB.',
@@ -505,7 +509,7 @@ const PTM=[['pt','Điểm','điểm tự do, điểm thuộc đường'],['int',
   ['symP','Đối xứng qua điểm','điểm đối xứng qua một tâm'],['symL','Đối xứng qua đường','điểm đối xứng qua một trục'],['ctrG','Trọng tâm','giao ba đường trung tuyến'],
   ['ctrO','Tâm đường tròn ngoại tiếp','giao ba đường trung trực'],['ctrH','Trực tâm','giao ba đường cao'],['ctrI','Tâm đường tròn nội tiếp','giao ba đường phân giác']];
 const LNM=[['seg','Đoạn thẳng','bấm 2 điểm'],['line','Đường thẳng','bấm 2 điểm'],['ray','Tia','bấm gốc, rồi bấm 1 điểm trên tia'],['pg','Đường phân giác','bấm 3 điểm A, O (đỉnh), B'],['tuyen','Đường trung tuyến','bấm đỉnh, rồi bấm cạnh đối diện'],['perp','Đường vuông góc','bấm 1 đường (hoặc cạnh), rồi bấm 1 điểm'],
-  ['par','Đường song song','bấm 1 đường (hoặc cạnh), rồi bấm 1 điểm'],['tt','Đường trung trực','bấm 1 đoạn thẳng / cạnh, hoặc 2 điểm'],['cao','Đường cao','bấm đỉnh, rồi bấm cạnh đối diện'],['segc','Đoạn bằng đoạn cho trước','bấm đoạn mẫu, bấm điểm đầu, rồi chọn hướng'],['angc','Góc cho trước','có sẵn cạnh OA, vẽ tia OB tạo góc α° cho trước']];
+  ['par','Đường song song','bấm 1 đường (hoặc cạnh), rồi bấm 1 điểm'],['tt','Đường trung trực','bấm 1 đoạn thẳng / cạnh, hoặc 2 điểm'],['cao','Đường cao','bấm đỉnh, rồi bấm cạnh đối diện'],['segc','Đoạn bằng đoạn cho trước','bấm đoạn mẫu, bấm điểm đầu, rồi chọn hướng'],['angc','Góc cho trước','có sẵn cạnh OA, vẽ tia OB tạo góc α° cho trước'],['tanO','Tiếp tuyến từ điểm ngoài','bấm điểm ngoài đường tròn, đưa đường lại gần đến khi khớp'],['tanA','Tiếp tuyến tại một điểm','bấm 1 điểm nằm trên đường tròn']];
 const P3M=[['3pt','Điểm','tạo điểm trong không gian (kéo lên/xuống bằng Shift hoặc ↕)'],['3xyz','Điểm theo tọa độ','nhập tọa độ (x; y; z) để tạo điểm chính xác'],['3on','Điểm trên đối tượng','điểm nằm trên đường, mặt phẳng, mặt của khối, mặt cầu'],['3mid','Trung điểm','của 2 điểm hoặc 1 cạnh'],['3int','Giao điểm','của 2 đường thẳng, hoặc đường thẳng với mặt phẳng']];
 const L3M=[['3line','Đường thẳng','qua 2 điểm'],['3seg','Đoạn thẳng','giữa 2 điểm'],['3ray','Tia','gốc và 1 điểm trên tia'],['3perp','Đường vuông góc','qua 1 điểm, vuông góc với đường / mặt phẳng'],['3par','Đường song song','qua 1 điểm, song song với đường thẳng']];
 const PL3M=[['3plane','Mặt phẳng','qua 3 điểm, điểm + đường, hoặc bấm vào một mặt của khối'],['3ppar','Mặt phẳng song song','với mặt phẳng (qua 1 điểm) hoặc với 1 đường thẳng'],['3pperp','Mặt phẳng vuông góc','với đường thẳng (qua 1 điểm) hoặc với mặt phẳng (chứa 1 đường)'],['3poly','Mặt / thiết diện (tô màu)','bấm lần lượt các đỉnh của đa giác']];
@@ -684,6 +688,7 @@ function geoClick(p){const T2=tool;if(T2[0]==='3'||T2==='solid')return geoClick3
   if(T2==='pt'){pickPoint(p);return}
   if(T2==='tri'||T2==='quad'){const k=shp[T2];if(!k){openMenu(T2);return}const [x,y]=Wd(...p),N=makeShape(T2,k,x,y);setTool('sel');
     say('✅ Đã vẽ '+SH[T2][k][0].toLowerCase()+' '+N.join('')+' – kéo các đỉnh màu xanh để thay đổi, hình luôn giữ đúng tính chất');return}
+  if(T2==='tanO'||T2==='tanA'){tanClick(p);return}
   if(T2==='angc'){const done=(O,A)=>{const a=Math.min(180,Math.max(0.1,AGS.a))*(AGS.cw?-1:1);const B=add({t:'rot',c:O,p:A,ang:a,dr:1,gv:1});add({t:'ray',a:O,b:B});add({t:'ang',a:A,b:O,c:B,col:'#16a34a'});sel=B;
       const nm=i=>{const q=byId(i);return (q&&q.n)||'?'};say('📐 Đã vẽ tia '+nm(O)+nm(B)+' với góc '+nm(A)+nm(O)+nm(B)+' = '+fmt(Math.abs(a),2)+'°. Kéo điểm '+nm(B)+' để đổi số đo, hoặc sửa số ở ô Góc.')};
     if(!pend.length&&hitAt(p,o=>PTS.has(o.t))==null){const e=edgeAt(p);if(e){const g0=geo(e[0]),g1=geo(e[1]),q0=S(g0.x,g0.y),q1=S(g1.x,g1.y);Math.hypot(p[0]-q0[0],p[1]-q0[1])<=Math.hypot(p[0]-q1[0],p[1]-q1[1])?done(e[0],e[1]):done(e[1],e[0]);return}}
@@ -851,9 +856,9 @@ function draw(clean){inval();drawBg(clean);const os=Pg().objs,now=performance.no
   if(is3())draw3d(clean,marks);
   each(o=>!PTS.has(o.t)&&!MS.includes(o.t)&&o.t[0]!=='3'&&o.t!=='img',o=>{marks(o.id);
     if(o.t==='ink'){shape(o,null,cm(o.col),o.w*V().z);return}if(o.t==='text'){shape(o,null,cm(o.col),1);return}
-    const g=geo(o.id);if(!g)return;if(o.t==='reg')return;if(o.t==='amk'||o.t==='smk'){try{(o.t==='amk'?drawAmk:drawSmk)(o,cm(o.col))}catch(e){}return}shape(o,g,cm(o.col),o.t==='fn'?2.6:2.4);if(o.t==='cpy')try{cpyDeco(o,g)}catch(e){}if(o.t==='perp')perpMark(o,g,cm(o.col));if(o.t==='cao'||o.t==='tuyen')try{footMark(o,g,cm(o.col))}catch(e){}});
+    const g=geo(o.id);if(!g)return;if(o.t==='reg')return;if(o.t==='amk'||o.t==='smk'){try{(o.t==='amk'?drawAmk:drawSmk)(o,cm(o.col))}catch(e){}return}shape(o,g,cm(o.col),o.t==='fn'?2.6:2.4);if(o.t==='cpy')try{cpyDeco(o,g)}catch(e){}if(o.t==='tanl')try{tanDeco(o,g)}catch(e){}if(o.t==='perp')perpMark(o,g,cm(o.col));if(o.t==='cao'||o.t==='tuyen')try{footMark(o,g,cm(o.col))}catch(e){}});
   each(o=>MS.includes(o.t),o=>{marks(o.id);if(geo(o.id))try{measure(o,o.col==='#111827'?(bg==='den'?'#5eead4':'#0f766e'):cm(o.col))}catch(e){}});
-  if(!clean)try{cpyPrev()}catch(e){}each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
+  if(!clean)try{cpyPrev();tanPrev()}catch(e){}each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
   if(!clean){popUpd();syncRp()}
   if(!clean){
     // nét đang vẽ
@@ -1450,6 +1455,52 @@ function lbDown(p){let best=null;
   if(!best)return false;sel=best.id;selAt=p;act={k:'plb',o:best,b:snap0(),s:p,lo0:(best.lo||[7,-5]).slice()};return true}
 function lbMove(p){if(act.k!=='plb')return false;let dx=act.lo0[0]+p[0]-act.s[0],dy=act.lo0[1]+p[1]-act.s[1];const L=Math.hypot(dx+6,dy+8);if(L>80){dx=(dx+6)*80/L-6;dy=(dy+8)*80/L-8}
   act.o.lo=[Math.round(dx),Math.round(dy)];return true}
+
+/* ---------- TIẾP TUYẾN ---------- */
+// tanp: tiếp điểm của tiếp tuyến kẻ từ điểm p tới đường tròn o (s = ±1 chọn 1 trong 2 tiếp tuyến)
+// tanl: tiếp tuyến tại điểm a thuộc đường tròn o (vuông góc với bán kính)
+TN.tanp='Tiếp điểm';TN.tanl='Tiếp tuyến';
+const circs=()=>Pg().objs.filter(o=>vis(o)&&o.t[0]!=='3'&&(()=>{const g=geo(o.id);return g&&g.k==='C'})());
+function tanPts(M,g){const dx=M.x-g.cx,dy=M.y-g.cy,d=Math.hypot(dx,dy);if(d<=g.r*1.0005)return null;const b=Math.atan2(dy,dx),al=Math.acos(g.r/d);
+  return [1,-1].map(s=>({s,x:g.cx+g.r*Math.cos(b+s*al),y:g.cy+g.r*Math.sin(b+s*al)}))}
+function tanBest(Mid,p){const M=geo(Mid);if(!M||M.k!=='P')return null;const Ms=S(M.x,M.y),am=Math.atan2(p[1]-Ms[1],p[0]-Ms[0]);if(Math.hypot(p[0]-Ms[0],p[1]-Ms[1])<25)return null;let best=null;
+  for(const c of circs()){const g=geo(c.id),ts=tanPts(M,g);if(!ts)continue;for(const t of ts){const T=S(t.x,t.y);let d=Math.abs(Math.atan2(T[1]-Ms[1],T[0]-Ms[0])-am);if(d>Math.PI)d=2*Math.PI-d;
+    if(d<0.13&&(!best||d<best.d))best={d,c:c.id,s:t.s,T,g}}}return best}
+function cenOf(cid){const c=byId(cid);if(!c)return null;if(c.t==='circ'||c.t==='circR')return c.c;
+  const free=()=>!Pg().objs.some(o=>o.n==='O');
+  if(c.t==='circD'){const ex=Pg().objs.find(o=>o.t==='mid'&&((o.a===c.a&&o.b===c.b)||(o.a===c.b&&o.b===c.a)));return ex?ex.id:add({t:'mid',a:c.a,b:c.b,n:free()?'O':undefined})}
+  if(c.t==='circ3'){const ex=Pg().objs.find(o=>o.t==='ctr'&&o.kd==='O'&&[o.a,o.b,o.c].sort().join()===[c.a,c.b,c.c].sort().join());return ex?ex.id:add({t:'ctr',kd:'O',a:c.a,b:c.b,c:c.c,n:free()?'O':undefined})}
+  return null}
+function segOnce(a,b,extra){const ex=Pg().objs.find(o=>o.t==='seg'&&((o.a===a&&o.b===b)||(o.a===b&&o.b===a)));return ex?ex.id:add(Object.assign({t:'seg',a,b},extra||{}))}
+function circOfPt(Aid){const A=byId(Aid),g=geo(Aid);if(!A||!g||g.k!=='P')return null;if(A.t==='pon'){const h=geo(A.on);if(h&&h.k==='C')return A.on}
+  let best=null,bd=1e9;for(const c of circs()){const h=geo(c.id),d=Math.abs(Math.hypot(g.x-h.cx,g.y-h.cy)-h.r);if(d<h.r*0.01+1e-6&&d<bd){bd=d;best=c.id}}return best}
+function tanClick(p){
+  if(tool==='tanA'){if(!circs().length){say('Bảng chưa có đường tròn nào. Hãy vẽ đường tròn trước.');return}
+    const warn=()=>say('⚠️ Hãy bấm vào một điểm nằm trên đường tròn (hoặc bấm thẳng lên đường tròn để lấy điểm).');
+    const hp=hitAt(p,o=>PTS.has(o.t)),onC=circs().some(c=>hitDist(c,p)<10);
+    if(!(hp!=null&&hitDist(byId(hp),p)<12)&&!onC){warn();return}
+    const A=pickPoint(p),c=circOfPt(A);if(c==null){warn();return}
+    const O=cenOf(c);if(Pg().objs.some(o=>o.t==='tanl'&&o.a===A&&o.o===c)){say('Tại điểm này đã có tiếp tuyến.');return}
+    if(O!=null)segOnce(O,A,{col:'#e11d48'});const L=add({t:'tanl',a:A,o:c,col:'#16a34a'});sel=L;
+    say('✅ Đã kẻ tiếp tuyến tại '+nm(A)+(O!=null?' – vuông góc với bán kính '+nm(O)+nm(A):'')+'. Kéo '+nm(A)+' trên đường tròn, tiếp tuyến chạy theo.');return}
+  if(tool==='tanO'){if(!circs().length){say('Bảng chưa có đường tròn nào. Hãy vẽ đường tròn trước.');return}
+    if(!pend.length){const M=pickPoint(p),g=geo(M);if(!circs().some(c=>tanPts(g,geo(c.id)))){say('⚠️ Điểm '+nm(M)+' nằm trong (hoặc trên) đường tròn – không kẻ được tiếp tuyến từ điểm này. Chọn điểm ở ngoài đường tròn.');return}
+      pend=[M];say('Đưa chuột lại gần đường tròn: khi đường từ '+nm(M)+' <b>khớp thành tiếp tuyến</b> (chuyển xanh lá) thì bấm.');return}
+    const M=pend[0],b=tanBest(M,p);if(!b){say('Chưa khớp. Đưa đường từ '+nm(M)+' sát vào mép đường tròn đến khi chuyển <b>xanh lá</b> rồi bấm.');return}
+    const ex=Pg().objs.find(o=>o.t==='tanp'&&o.p===M&&o.o===b.c&&o.s===b.s);
+    const T=ex?ex.id:add({t:'tanp',p:M,o:b.c,s:b.s});const O=cenOf(b.c);
+    if(!Pg().objs.some(o=>o.t==='line'&&((o.a===M&&o.b===T)||(o.a===T&&o.b===M))))add({t:'line',a:M,b:T,col:'#16a34a'});
+    if(O!=null){segOnce(O,T,{col:'#e11d48'});if(!Pg().objs.some(o=>o.t==='amk'&&o.b===T))add({t:'amk',a:O,b:T,c:M,st:'r',col:'#e11d48'})}
+    pend=[];say('✅ Đã kẻ tiếp tuyến '+nm(M)+nm(T)+(O!=null?' – bán kính '+nm(O)+nm(T)+' ⊥ '+nm(M)+nm(T):'')+'. Bấm điểm khác (hoặc lại '+nm(M)+') để kẻ tiếp tuyến thứ hai.');return}}
+function tanPrev(){if(tool!=='tanO'||pend.length!==1||!mouse)return;const M=geo(pend[0]);if(!M||M.k!=='P')return;const Ms=S(M.x,M.y),b=tanBest(pend[0],mouse);ctx.save();ctx.lineCap='round';
+  if(b){const u=un(b.T[0]-Ms[0],b.T[1]-Ms[1]);if(u){const L=4000;ctx.strokeStyle='#16a34a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(Ms[0]-u[0]*L,Ms[1]-u[1]*L);ctx.lineTo(Ms[0]+u[0]*L,Ms[1]+u[1]*L);ctx.stroke()}
+    const C=S(b.g.cx,b.g.cy);ctx.setLineDash([6,5]);ctx.strokeStyle='#e11d48';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(C[0],C[1]);ctx.lineTo(b.T[0],b.T[1]);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#16a34a';ctx.beginPath();ctx.arc(b.T[0],b.T[1],6,0,7);ctx.fill();
+    ctx.font='600 14px Segoe UI,Arial';ctx.fillStyle='#166534';ctx.fillText('Tiếp tuyến – bấm để vẽ',b.T[0]+12,b.T[1]-12)}
+  else{ctx.setLineDash([7,6]);ctx.strokeStyle='#94a3b8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(Ms[0],Ms[1]);const u=un(mouse[0]-Ms[0],mouse[1]-Ms[1]);if(u){ctx.lineTo(Ms[0]+u[0]*2000,Ms[1]+u[1]*2000);ctx.stroke()}ctx.setLineDash([])}
+  ctx.restore()}
+function tanDeco(o,g){const A=geo(o.a),h=geo(o.o);if(!A||!h)return;const P=S(A.x,A.y),C=S(h.cx,h.cy),u=un(C[0]-P[0],C[1]-P[1]);if(!u)return;const v=[-u[1],u[0]],m=13;
+  ctx.save();ctx.strokeStyle='#e11d48';ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(P[0]+u[0]*m,P[1]+u[1]*m);ctx.lineTo(P[0]+(u[0]+v[0])*m,P[1]+(u[1]+v[1])*m);ctx.lineTo(P[0]+v[0]*m,P[1]+v[1]*m);ctx.stroke();ctx.restore()}
 
 /* ---------- ĐỒNG BỘ VỚI LỚP HỌC (web Kiến Học Toán) ---------- */
 const HOST=window.__bpHost||null;
