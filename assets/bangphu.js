@@ -150,7 +150,7 @@ function beep(freq=880,dur=0.25,times=1){try{beepCtx=beepCtx||new (window.AudioC
 T({id:'bangphu',ic:'✏️',t:'Bảng phụ thông minh (GeoGebra + Ink)',tag:'Mọi lớp',
 d:'Vừa viết tay như Scribble Ink (bút, dạ quang, laser, chữ, nhiều trang) vừa dựng hình động như GeoGebra (điểm, đoạn, đường tròn, vuông góc, song song, giao điểm, đo góc – độ dài – diện tích, đồ thị). Bút thông minh tự nắn nét vẽ tay thành hình.',
 init(body){
-let SY=null;let W=1280,H=720;const KEY=window.__bpHost?'bangphu_lop':'bangphu_v2';
+let SY=null,cpyPend=[],cpyReady=false;let W=1280,H=720;const KEY=window.__bpHost?'bangphu_lop':'bangphu_v2';
 body.appendChild(el('style','',`
 .bp,.bp *{-webkit-tap-highlight-color:transparent}
 .bp{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -313,7 +313,7 @@ function calc(o){const t=o.t;
   if(t==='circ3'){const A=need(o.a),B=need(o.b),C=need(o.c);const d=2*(A.x*(B.y-C.y)+B.x*(C.y-A.y)+C.x*(A.y-B.y));if(Math.abs(d)<1e-9)return;
     const a2=A.x*A.x+A.y*A.y,b2=B.x*B.x+B.y*B.y,c2=C.x*C.x+C.y*C.y;const ux=(a2*(B.y-C.y)+b2*(C.y-A.y)+c2*(A.y-B.y))/d,uy=(a2*(C.x-B.x)+b2*(A.x-C.x)+c2*(B.x-A.x))/d;
     return {k:'C',cx:ux,cy:uy,r:Math.hypot(A.x-ux,A.y-uy)}}
-  if(t==='cpy'){const h=geo(o.o);if(!h)return;const k=o.k||1,tx=o.tx||0,ty=o.ty||0;if(h.k==='G')return {k:'G',p:h.p.map(a=>[a[0]*k+tx,a[1]*k+ty])};if(h.k==='C')return {k:'C',cx:h.cx*k+tx,cy:h.cy*k+ty,r:h.r*k};return}
+  if(t==='cpy'){const h=cpySrcG(o);if(!h)return;const k=o.k||1,tx=o.tx||0,ty=o.ty||0;if(h.k==='G')return {k:'G',p:h.p.map(a=>[a[0]*k+tx,a[1]*k+ty])};if(h.k==='C')return {k:'C',cx:h.cx*k+tx,cy:h.cy*k+ty,r:h.r*k};return}
   if(t==='poly')return {k:'G',p:o.ps.map(i=>{const q=need(i);return [q.x,q.y]})};
   if(t==='fn'){const f=fnOf(o.ex);return f?{k:'F',f}:undefined}
   if(t==='ang'){need(o.a);need(o.b);need(o.c);return {k:'M'}}
@@ -453,7 +453,7 @@ const TL=[
  ['Không gian',[['p3m',IC['3pt'],'Điểm ▾'],['l3m',IC['3line'],'Đường ▾'],['pl3m',IC['3plane'],'Mặt phẳng ▾'],['3dist',IC['3dist'],'Độ dài'],['solid',IC.solid,'Khối ▾'],['vert3',IC.vert3,'Kéo theo chiều cao (Shift)'],['rot3',IC.rot3,'Tự xoay'],['ax3',IC['3ax'],'Trục Oxyz'],['view3',IC.view3,'Góc nhìn SGK']]],
  ['Kí hiệu',[['amk',IC.amk,'Kí hiệu góc'],['smk',IC.smk,'Kí hiệu cạnh'],['fill',IC.fill,'Tô màu đa giác'],['cpy',IC.cpy,'Tách hình (kéo bản sao)']]],
  ['Đo · Vẽ',[['ang',IC.ang,'Đo góc'],['dist',IC.dist,'Độ dài'],['area',IC.area,'Diện tích'],['fn',IC.fn,'Đồ thị y=f(x)']]]];
-const HINT={cpy:'Bấm vào <b>bên trong</b> một đa giác, vùng đã tô hoặc hình tròn rồi <b>kéo</b> bản sao ra chỗ trống. Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>tên điểm</b> để dời tên sang chỗ khác · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
+const HINT={cpy:'Bấm lần lượt <b>các điểm</b> tạo thành đa giác, bấm lại <b>điểm đầu</b> để khép kín, rồi bấm vào trong vùng đó và <b>kéo</b> bản sao ra chỗ trống (hoặc kéo thẳng từ một hình đã tô). Kéo đỉnh của bản sao thì hình gốc đổi theo và ngược lại · kéo ô vuông ở góc (hoặc nút 🔍) để phóng to, thu nhỏ.',sel:'<b>Nhấn giữ một điểm</b> để đổi tên · kéo <b>tên điểm</b> để dời tên sang chỗ khác · kéo <b>điểm tự do</b> (chấm xanh) để cả hình thay đổi theo · bấm chọn một hình rồi bấm màu để đổi màu, phím Delete để xóa · kéo chỗ trống để dời bảng.',
  pen:'Viết, vẽ tự do như bảng phấn. Lăn chuột để phóng to/thu nhỏ, giữ chuột phải để kéo bảng.',
  smart:'Vẽ phác bằng tay: nét thẳng → <b>đoạn thẳng</b>, vòng tròn → <b>đường tròn</b>, tam giác/tứ giác → <b>đa giác động</b>, chấm → <b>điểm</b>.',
  hl:'Tô dạ quang để nhấn mạnh (nét trong suốt).',erase:'Rê qua nét hoặc hình cần xóa (xóa một hình sẽ xóa cả các hình dựng từ nó).',
@@ -579,7 +579,7 @@ setTimeout(()=>{menu.addEventListener('click',()=>{if(wrap.classList.contains('c
 document.addEventListener('keydown',e=>{if(!body.classList.contains('on'))return;const tg=(e.target.tagName||'');if(tg==='TEXTAREA'||tg==='INPUT')return;if(e.key==='Tab'){e.preventDefault();if(!wrap.classList.contains('compact'))setCompact(true);else showTb(!wrap.classList.contains('tb-on'),true)}});
 {let v='1';try{v=localStorage.getItem('bp_compact')||'1'}catch(e){}if(v==='1')wrap.classList.add('compact')}
 function goPage(i){if(i<0||i>=pages.length)return;setTimeout(()=>{try{updHidBtn();updMode();if(!is3()&&(tool[0]==='3'||tool==='solid'))setTool('sel');if(is3()&&gdivs['Điểm'].contains(tbtn[tool]||null))setTool('sel')}catch(_){}},0);closeText();pi=i;sel=null;pend=[];act=null;inval();D();persist()}
-function setTool(id){if(__syDeny(id))return;closeText();try{xyzShow(id==='3xyz')}catch(_){}try{fmenu.style.display='none';hiFace=null}catch(_){}if(id!=='tri'&&id!=='quad'&&id!=='solid')try{closeMenu()}catch(_){}tool=id;pend=[];act=null;Object.entries(tbtn).forEach(([k,b])=>b.classList.toggle('on',k===id));try{tbtn.ax3.classList.toggle('on',showAx);tbtn.vert3.classList.toggle('on',vertMode);tbtn.rot3.classList.toggle('on',autoRot)}catch(_){}
+function setTool(id){if(__syDeny(id))return;cpyPend=[];cpyReady=false;closeText();try{xyzShow(id==='3xyz')}catch(_){}try{fmenu.style.display='none';hiFace=null}catch(_){}if(id!=='tri'&&id!=='quad'&&id!=='solid')try{closeMenu()}catch(_){}tool=id;pend=[];act=null;Object.entries(tbtn).forEach(([k,b])=>b.classList.toggle('on',k===id));try{tbtn.ax3.classList.toggle('on',showAx);tbtn.vert3.classList.toggle('on',vertMode);tbtn.rot3.classList.toggle('on',autoRot)}catch(_){}
   for(const g in SUB){const it=SUB[g][0].find(a=>a[0]===id);if(it){tbtn[g].classList.add('on');tbtn[g].querySelector('.i').innerHTML=IC[id];tbtn[g].title=it[1]}}
   gCtx.innerHTML='';if(id==='circR')gCtx.appendChild(rWrap);if(id==='amk')gCtx.appendChild(amkWrap);if(id==='segc')gCtx.appendChild(segcWrap);if(id==='smk')gCtx.appendChild(smkWrap);if(id==='fill')gCtx.appendChild(fillWrap);if(id==='rat')gCtx.appendChild(ratWrap);if(id==='angc')gCtx.appendChild(angWrap);if(id==='fn'){gCtx.appendChild(fWrap);setTimeout(()=>fIn.focus(),0)}
   try{updHd()}catch(_){}c.style.cursor=id==='pan'?'grab':id==='sel'?'default':id==='text'?'text':id==='laser'||id==='erase'?'none':'crosshair';D()}
@@ -853,7 +853,7 @@ function draw(clean){inval();drawBg(clean);const os=Pg().objs,now=performance.no
     if(o.t==='ink'){shape(o,null,cm(o.col),o.w*V().z);return}if(o.t==='text'){shape(o,null,cm(o.col),1);return}
     const g=geo(o.id);if(!g)return;if(o.t==='reg')return;if(o.t==='amk'||o.t==='smk'){try{(o.t==='amk'?drawAmk:drawSmk)(o,cm(o.col))}catch(e){}return}shape(o,g,cm(o.col),o.t==='fn'?2.6:2.4);if(o.t==='cpy')try{cpyDeco(o,g)}catch(e){}if(o.t==='perp')perpMark(o,g,cm(o.col));if(o.t==='cao'||o.t==='tuyen')try{footMark(o,g,cm(o.col))}catch(e){}});
   each(o=>MS.includes(o.t),o=>{marks(o.id);if(geo(o.id))try{measure(o,o.col==='#111827'?(bg==='den'?'#5eead4':'#0f766e'):cm(o.col))}catch(e){}});
-  each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
+  if(!clean)try{cpyPrev()}catch(e){}each(o=>PTS.has(o.t),o=>{marks(o.id);const g=geo(o.id);if(g){drawPt(o,g);if(o.t==='rat'&&!clean)try{ratDeco(o,g)}catch(e){}}});
   if(!clean){popUpd();syncRp()}
   if(!clean){
     // nét đang vẽ
@@ -1368,7 +1368,8 @@ animLoop(dt=>{if(!body.classList.contains('on'))return;fit();if(autoRot&&is3()&&
 // o = {t:'cpy', o: mã hình gốc (đa giác, vùng tô, đường tròn), k: tỉ lệ, tx, ty: dời}. Điểm của bản sao = k·(điểm gốc) + (tx, ty).
 TN.cpy='Hình tách';
 const cpyInv=(o,w)=>{const k=o.k||1;return [(w[0]-(o.tx||0))/k,(w[1]-(o.ty||0))/k]};
-function cpySrcPts(o){const s=byId(o.o);if(!s)return [];if(s.ps)return s.ps;if(s.t==='cpy')return cpySrcPts(s);if(typeof s.c==='number')return [s.c];if(typeof s.a==='number'&&geo(s.id)&&geo(s.id).k==='C')return [s.a];return []}
+function cpySrcG(o){if(o.ps){const q=o.ps.map(i=>geo(i));if(q.some(g=>!g||g.k!=='P'))return;return {k:'G',p:q.map(g=>[g.x,g.y])}}return geo(o.o)}
+function cpySrcPts(o){if(o.ps)return o.ps;const s=byId(o.o);if(!s)return [];if(s.ps)return s.ps;if(s.t==='cpy')return cpySrcPts(s);if(typeof s.c==='number')return [s.c];if(typeof s.a==='number'&&geo(s.id)&&geo(s.id).k==='C')return [s.a];return []}
 function cpyCen(g){if(g.k==='C')return [g.cx,g.cy];let x=0,y=0;g.p.forEach(a=>{x+=a[0];y+=a[1]});return [x/g.p.length,y/g.p.length]}
 function cpyVerts(o){const g=geo(o.id);if(!g)return [];const ids=cpySrcPts(o);
   if(g.k==='G')return g.p.map((a,i)=>({id:ids[i],q:S(a[0],a[1])})).filter(v=>v.id!=null);
@@ -1391,28 +1392,44 @@ function cpyDeco(o,g){const dark=bg==='den';ctx.save();
     ctx.beginPath();ctx.moveTo(b[2]+18,b[3]+28);ctx.lineTo(b[2]+28,b[3]+18);ctx.moveTo(b[2]+22,b[3]+18);ctx.lineTo(b[2]+28,b[3]+18);ctx.lineTo(b[2]+28,b[3]+24);ctx.stroke()}
   if(b&&Math.abs((o.k||1)-1)>0.005){ctx.font='600 13px Segoe UI,Arial';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillStyle=dark?'#cbd5e1':'#64748b';ctx.fillText('×'+fmt(o.k,2),b[0],b[3]+8)}
   ctx.restore()}
-function cpyScale(o,f){const g=geo(o.id),h=geo(o.o);if(!g||!h)return;const C=cpyCen(g),Cs=cpyCen(h),k=Math.max(.2,Math.min(8,(o.k||1)*f));
+function cpyScale(o,f){const g=geo(o.id),h=cpySrcG(o);if(!g||!h)return;const C=cpyCen(g),Cs=cpyCen(h),k=Math.max(.2,Math.min(8,(o.k||1)*f));
   o.k=+k.toFixed(4);o.tx=+(C[0]-k*Cs[0]).toFixed(4);o.ty=+(C[1]-k*Cs[1]).toFixed(4);inval();D()}
 function cpyDown(p){
   const cs=Pg().objs.filter(o=>o.t==='cpy'&&vis(o));
   const so=sel!=null&&byId(sel);
   if(so&&so.t==='cpy'&&tool==='sel'){const b=cpyBox(so);if(b&&p[0]>=b[2]+8&&p[0]<=b[2]+38&&p[1]>=b[3]+8&&p[1]<=b[3]+38){const g=geo(so.id);
-    act={k:'csz',o:so,b:snap0(),C:cpyCen(g),Cs:cpyCen(geo(so.o)),k0:so.k||1,d0:Math.max(8,Math.hypot(p[0]-S(...cpyCen(g))[0],p[1]-S(...cpyCen(g))[1]))};return true}}
+    act={k:'csz',o:so,b:snap0(),C:cpyCen(g),Cs:cpyCen(cpySrcG(so)),k0:so.k||1,d0:Math.max(8,Math.hypot(p[0]-S(...cpyCen(g))[0],p[1]-S(...cpyCen(g))[1]))};return true}}
   for(let i=cs.length-1;i>=0;i--){const o=cs[i];for(const v of cpyVerts(o)){if(Math.hypot(p[0]-v.q[0],p[1]-v.q[1])<12){const s=byId(v.id);
     if(s&&canDrag(s)){sel=o.id;selAt=p;act={k:'pt',o:s,b:snap0(),s:p,z0:s.z,h0:s.h,vert:false,map:o};return true}}}}
   const near=hitAt(p,o=>PTS.has(o.t));
   const hc=hitAt(p,o=>o.t==='cpy');
   if(hc!=null&&!(near!=null&&hitDist(byId(near),p)<10)){const o=byId(hc);sel=hc;selAt=p;act={k:'cmv',o,b:snap0(),s:Wd(...p),t0:[o.tx||0,o.ty||0]};return true}
-  if(tool==='cpy'){const h=fillTarget(p);
-    if(h==null){say('Bấm vào <b>bên trong</b> một đa giác, vùng đã tô hoặc hình tròn rồi kéo ra để tách hình');return true}
-    const src=byId(h),b=snap0(),id=add({t:'cpy',o:h,k:1,tx:0,ty:0,col:src.t==='reg'?src.col:(src.col||col)});const o=byId(id);
-    sel=id;selAt=p;act={k:'cmv',o,b,s:Wd(...p),t0:[0,0]};say('Kéo bản sao ra chỗ trống. Kéo đỉnh của bản sao thì hình gốc đổi theo; kéo ô vuông ở góc để phóng to, thu nhỏ.');return true}
+  if(tool==='cpy'){
+    const startMove=(id,b)=>{const o=byId(id);sel=id;selAt=p;act={k:'cmv',o,b,s:Wd(...p),t0:[0,0]};cpyPend=[];cpyReady=false;
+      say('Kéo bản sao ra chỗ trống. Kéo đỉnh của bản sao thì hình gốc đổi theo; bấm chọn bản sao rồi kéo ô vuông ở góc để phóng to, thu nhỏ.')};
+    const hp=hitAt(p,o=>PTS.has(o.t)),hpOk=hp!=null&&hitDist(byId(hp),p)<14;
+    if(cpyReady&&!hpOk){const q=cpyPend.map(i=>{const g=geo(i);return S(g.x,g.y)});
+      if(inPoly(p,q)){const b=snap0(),id=add({t:'cpy',ps:cpyPend.slice(),k:1,tx:0,ty:0,col:'#2563eb',fill:'#60a5fa'});startMove(id,b);return true}}
+    if(hpOk){
+      if(cpyReady){cpyPend=[];cpyReady=false}
+      if(cpyPend.length>=3&&hp===cpyPend[0]){cpyReady=true;say('✅ Đã chọn đa giác '+cpyPend.map(i=>(byId(i)||{}).n||'?').join('')+'. Bấm vào trong vùng tô cam rồi kéo ra ngoài.');D();return true}
+      if(cpyPend.includes(hp)){say('Điểm này đã chọn. Bấm lại điểm đầu '+((byId(cpyPend[0])||{}).n||'')+' để khép kín đa giác.');return true}
+      cpyPend.push(hp);say(cpyPend.length<3?'Đã chọn '+cpyPend.map(i=>(byId(i)||{}).n||'?').join('')+'. Bấm tiếp các đỉnh của đa giác.':'Đã chọn '+cpyPend.map(i=>(byId(i)||{}).n||'?').join('')+'. Bấm tiếp đỉnh khác, hoặc bấm lại điểm đầu để khép kín.');D();return true}
+    if(!cpyPend.length){const h=fillTarget(p);if(h!=null){const src=byId(h),b=snap0(),id=add({t:'cpy',o:h,k:1,tx:0,ty:0,col:src.t==='reg'?src.col:(src.col||col)});startMove(id,b);return true}}
+    if(cpyPend.length&&!cpyReady){say('Bấm vào <b>các điểm</b> (đỉnh) của đa giác. Bấm lại điểm đầu để khép kín.');return true}
+    cpyPend=[];cpyReady=false;say('Bấm lần lượt <b>các điểm</b> tạo thành đa giác, bấm lại điểm đầu để khép kín, rồi kéo vùng đó ra ngoài.');D();return true}
   return false}
 function cpyMove(p){const k=act.k;
   if(k==='cmv'){const [x,y]=Wd(...p);act.o.tx=+(act.t0[0]+x-act.s[0]).toFixed(4);act.o.ty=+(act.t0[1]+y-act.s[1]).toFixed(4);return true}
   if(k==='csz'){const Cs=S(...act.C),d=Math.hypot(p[0]-Cs[0],p[1]-Cs[1]),kk=Math.max(.2,Math.min(8,act.k0*d/act.d0));
     act.o.k=+kk.toFixed(4);act.o.tx=+(act.C[0]-kk*act.Cs[0]).toFixed(4);act.o.ty=+(act.C[1]-kk*act.Cs[1]).toFixed(4);return true}
   return false}
+
+function cpyPrev(){if(tool!=='cpy'||!cpyPend.length)return;const q=cpyPend.map(i=>{const g=geo(i);return g&&g.k==='P'?S(g.x,g.y):null});if(q.some(x=>!x)){cpyPend=[];cpyReady=false;return}
+  ctx.save();ctx.lineJoin=ctx.lineCap='round';ctx.beginPath();q.forEach((a,i)=>i?ctx.lineTo(a[0],a[1]):ctx.moveTo(a[0],a[1]));
+  if(cpyReady){ctx.closePath();ctx.fillStyle='rgba(245,158,11,.22)';ctx.fill()}else if(mouse){ctx.lineTo(mouse[0],mouse[1])}
+  ctx.strokeStyle='#f59e0b';ctx.lineWidth=3;ctx.setLineDash(cpyReady?[]:[8,6]);ctx.stroke();ctx.setLineDash([]);
+  q.forEach((a,i)=>{ctx.beginPath();ctx.arc(a[0],a[1],i===0&&!cpyReady&&q.length>=3?10:8,0,7);ctx.strokeStyle='#f59e0b';ctx.lineWidth=2.5;ctx.stroke()});ctx.restore()}
 
 /* ---------- ĐIỂM CHIA ĐOẠN THẲNG THEO TỈ LỆ ---------- */
 // o = {t:'rat', a, b, m, n}: điểm M thuộc đoạn AB với AM : MB = m : n
