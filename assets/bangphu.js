@@ -1481,7 +1481,7 @@ function tanClick(p){
     if(!(hp!=null&&hitDist(byId(hp),p)<12)&&!onC){warn();return}
     const A=pickPoint(p),c=circOfPt(A);if(c==null){warn();return}
     const O=cenOf(c);if(Pg().objs.some(o=>o.t==='tanl'&&o.a===A&&o.o===c)){say('Tại điểm này đã có tiếp tuyến.');return}
-    if(O!=null)segOnce(O,A,{col:'#e11d48'});const L=add({t:'tanl',a:A,o:c,col:'#16a34a'});sel=L;
+    if(O!=null)segOnce(O,A,{col});const L=add({t:'tanl',a:A,o:c,col});sel=L;
     say('✅ Đã kẻ tiếp tuyến tại '+nm(A)+(O!=null?' – vuông góc với bán kính '+nm(O)+nm(A):'')+'. Kéo '+nm(A)+' trên đường tròn, tiếp tuyến chạy theo.');return}
   if(tool==='tanO'){if(!circs().length){say('Bảng chưa có đường tròn nào. Hãy vẽ đường tròn trước.');return}
     if(!pend.length){const M=pickPoint(p),g=geo(M);if(!circs().some(c=>tanPts(g,geo(c.id)))){say('⚠️ Điểm '+nm(M)+' nằm trong (hoặc trên) đường tròn – không kẻ được tiếp tuyến từ điểm này. Chọn điểm ở ngoài đường tròn.');return}
@@ -1489,18 +1489,18 @@ function tanClick(p){
     const M=pend[0],b=tanBest(M,p);if(!b){say('Chưa khớp. Đưa đường từ '+nm(M)+' sát vào mép đường tròn đến khi chuyển <b>xanh lá</b> rồi bấm.');return}
     const ex=Pg().objs.find(o=>o.t==='tanp'&&o.p===M&&o.o===b.c&&o.s===b.s);
     const T=ex?ex.id:add({t:'tanp',p:M,o:b.c,s:b.s});const O=cenOf(b.c);
-    if(!Pg().objs.some(o=>o.t==='line'&&((o.a===M&&o.b===T)||(o.a===T&&o.b===M))))add({t:'line',a:M,b:T,col:'#16a34a'});
-    if(O!=null){segOnce(O,T,{col:'#e11d48'});if(!Pg().objs.some(o=>o.t==='amk'&&o.b===T))add({t:'amk',a:O,b:T,c:M,st:'r',col:'#e11d48'})}
+    segOnce(M,T,{col});
+    if(O!=null){segOnce(O,T,{col});if(!Pg().objs.some(o=>o.t==='amk'&&o.b===T))add({t:'amk',a:O,b:T,c:M,st:'r',col})}
     pend=[];say('✅ Đã kẻ tiếp tuyến '+nm(M)+nm(T)+(O!=null?' – bán kính '+nm(O)+nm(T)+' ⊥ '+nm(M)+nm(T):'')+'. Bấm điểm khác (hoặc lại '+nm(M)+') để kẻ tiếp tuyến thứ hai.');return}}
 function tanPrev(){if(tool!=='tanO'||pend.length!==1||!mouse)return;const M=geo(pend[0]);if(!M||M.k!=='P')return;const Ms=S(M.x,M.y),b=tanBest(pend[0],mouse);ctx.save();ctx.lineCap='round';
-  if(b){const u=un(b.T[0]-Ms[0],b.T[1]-Ms[1]);if(u){const L=4000;ctx.strokeStyle='#16a34a';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(Ms[0]-u[0]*L,Ms[1]-u[1]*L);ctx.lineTo(Ms[0]+u[0]*L,Ms[1]+u[1]*L);ctx.stroke()}
+  if(b){const u=un(b.T[0]-Ms[0],b.T[1]-Ms[1]);if(u){ctx.strokeStyle='#16a34a';ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(Ms[0],Ms[1]);ctx.lineTo(b.T[0],b.T[1]);ctx.stroke()}
     const C=S(b.g.cx,b.g.cy);ctx.setLineDash([6,5]);ctx.strokeStyle='#e11d48';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(C[0],C[1]);ctx.lineTo(b.T[0],b.T[1]);ctx.stroke();ctx.setLineDash([]);
     ctx.fillStyle='#16a34a';ctx.beginPath();ctx.arc(b.T[0],b.T[1],6,0,7);ctx.fill();
-    ctx.font='600 14px Segoe UI,Arial';ctx.fillStyle='#166534';ctx.fillText('Tiếp tuyến – bấm để vẽ',b.T[0]+12,b.T[1]-12)}
+    ctx.font='600 14px Segoe UI,Arial';ctx.fillStyle=bg==='den'?'#86efac':'#166534';ctx.fillText('Tiếp tuyến – bấm để vẽ',b.T[0]+12,b.T[1]-12)}
   else{ctx.setLineDash([7,6]);ctx.strokeStyle='#94a3b8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(Ms[0],Ms[1]);const u=un(mouse[0]-Ms[0],mouse[1]-Ms[1]);if(u){ctx.lineTo(Ms[0]+u[0]*2000,Ms[1]+u[1]*2000);ctx.stroke()}ctx.setLineDash([])}
   ctx.restore()}
 function tanDeco(o,g){const A=geo(o.a),h=geo(o.o);if(!A||!h)return;const P=S(A.x,A.y),C=S(h.cx,h.cy),u=un(C[0]-P[0],C[1]-P[1]);if(!u)return;const v=[-u[1],u[0]],m=13;
-  ctx.save();ctx.strokeStyle='#e11d48';ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(P[0]+u[0]*m,P[1]+u[1]*m);ctx.lineTo(P[0]+(u[0]+v[0])*m,P[1]+(u[1]+v[1])*m);ctx.lineTo(P[0]+v[0]*m,P[1]+v[1]*m);ctx.stroke();ctx.restore()}
+  ctx.save();ctx.strokeStyle=cm(o.col||'#e11d48');ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(P[0]+u[0]*m,P[1]+u[1]*m);ctx.lineTo(P[0]+(u[0]+v[0])*m,P[1]+(u[1]+v[1])*m);ctx.lineTo(P[0]+v[0]*m,P[1]+v[1]*m);ctx.stroke();ctx.restore()}
 
 /* ---------- ĐỒNG BỘ VỚI LỚP HỌC (web Kiến Học Toán) ---------- */
 const HOST=window.__bpHost||null;
