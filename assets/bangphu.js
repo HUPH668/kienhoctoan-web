@@ -1349,7 +1349,7 @@ function endPtr(e){ptrs.delete(e.pointerId);cancelLp();if(pinch){if(ptrs.size<2)
   if(a.k==='g3'){txn(()=>geoClick(a.s))}
   else if(a.k==='rot'){persist();if(tool!=='pan')c.style.cursor=tool==='sel'?'default':'crosshair'}
   else if(a.k==='ink'){const q=a.scr;if(tool==='smart')hwAdd(q);else if(tool==='pen'&&PK==='hinh')txn(()=>smartInk(q));
-    else txn(()=>add({t:'ink',pts:q.map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col:tool==='hl'?hlCol():col,w:(tool==='hl'?hlW():wid*(tool==='pen'?pkW():1))/V().z,hl:tool==='hl'||undefined,pk:tool==='pen'&&PK!=='da'?PK:undefined}))}
+    else txn(()=>add({t:'ink',pts:(tool==='pen'&&(PK==='may'||PK==='long')?lightSm(q):q).map(v=>Wd(v[0],v[1]).map(z=>+z.toFixed(4))),col:tool==='hl'?hlCol():col,w:(tool==='hl'?hlW():wid*(tool==='pen'?pkW():1))/V().z,hl:tool==='hl'||undefined,pk:tool==='pen'&&PK!=='da'?PK:undefined}))}
   else if(a.b&&snap0()!==a.b)pushUndo(a.b);
   else if(a.k==='pan'||a.k==='rot')persist();
   if(tool==='pan')c.style.cursor='grab';inval();D()}
@@ -1505,12 +1505,18 @@ function tanDeco(o,g){const A=geo(o.a),h=geo(o.o);if(!A||!h)return;const P=S(A.x
 /* ---------- NHIỀU LOẠI BÚT ---------- */
 // o.pk trên nét mực: bi (mảnh), long (thanh đậm theo tốc độ), phan (phấn), dut (nét đứt), ten (mũi tên); không có = bút dạ
 let PK='da';
-const PKS=[['bi','🖊️ Bút bi'],['da','🖍 Bút dạ'],['long','🖌️ Bút lông'],['phan','🧂 Phấn'],['dut','┄ Nét đứt'],['ten','➜ Mũi tên'],['hinh','📐 Vẽ hình']];
+const PKS=[['bi','🖊️ Bút bi'],['da','🖍 Bút dạ'],['may','✒️ Bút máy'],['long','🖌️ Bút lông'],['phan','🧂 Phấn'],['dut','┄ Nét đứt'],['ten','➜ Mũi tên'],['hinh','📐 Vẽ hình']];
 const pkWrap=el('span','bp-pk');
-const pkSeg=seg(pkWrap,PKS,PK,v=>{PK=v;say({bi:'Bút bi: nét mảnh, đều.',da:'Bút dạ: nét đều, rõ.',long:'Bút lông: viết nhanh nét thanh, viết chậm nét đậm.',phan:'Phấn: nét như viết phấn trên bảng.',dut:'Nét đứt: vẽ đường gióng, đường phụ.',ten:'Mũi tên: nét kết thúc bằng đầu mũi tên.',hinh:'Vẽ hình: nét thẳng → đoạn thẳng, vòng → đường tròn, tam giác/tứ giác → đa giác (hình động).'}[v])});
-const pkW=()=>PK==='bi'?.55:PK==='long'?1.5:PK==='phan'?1.4:1;
+const pkSeg=seg(pkWrap,PKS,PK,v=>{PK=v;say({bi:'Bút bi: nét mảnh, đều.',may:'Bút máy: ngòi vát như bút mực – nét lên mảnh, nét xuống đậm, chữ có nét thanh nét đậm.',da:'Bút dạ: nét đều, rõ.',long:'Bút lông: viết nhanh nét thanh, viết chậm nét đậm.',phan:'Phấn: nét như viết phấn trên bảng.',dut:'Nét đứt: vẽ đường gióng, đường phụ.',ten:'Mũi tên: nét kết thúc bằng đầu mũi tên.',hinh:'Vẽ hình: nét thẳng → đoạn thẳng, vòng → đường tròn, tam giác/tứ giác → đa giác (hình động).'}[v])});
+const pkW=()=>PK==='may'?1.9:PK==='bi'?.55:PK==='long'?1.5:PK==='phan'?1.4:1;
 function inkKind(o,q,lw,cc){const k=o.pk;if(!k)return false;
   if(k==='bi'){inkPath(q);ctx.stroke();return true}
+  if(k==='may'){const n=q.length,nb=-Math.PI/4.2,hx=Math.cos(nb)*lw/2,hy=Math.sin(nb)*lw/2;ctx.fillStyle=ctx.strokeStyle;
+    if(n<2){ctx.beginPath();ctx.moveTo(q[0][0]-hx,q[0][1]-hy);ctx.lineTo(q[0][0]+hx,q[0][1]+hy);ctx.lineWidth=lw*.35;ctx.stroke();return true}
+    let L=0;const cum=[0];for(let i=1;i<n;i++){L+=Math.hypot(q[i][0]-q[i-1][0],q[i][1]-q[i-1][1]);cum.push(L)}
+    const tp=s=>Math.min(1,.35+.65*Math.min(s,L-s)/Math.max(1,Math.min(L*.2,lw*2.5)));
+    for(let i=1;i<n;i++){const a=q[i-1],b=q[i],fa=tp(cum[i-1]),fb=tp(cum[i]);ctx.beginPath();ctx.moveTo(a[0]-hx*fa,a[1]-hy*fa);ctx.lineTo(a[0]+hx*fa,a[1]+hy*fa);ctx.lineTo(b[0]+hx*fb,b[1]+hy*fb);ctx.lineTo(b[0]-hx*fb,b[1]-hy*fb);ctx.closePath();ctx.fill()}
+    ctx.lineWidth=Math.max(1,lw*.16);inkPath(q);ctx.stroke();return true}
   if(k==='dep'){depDraw(q,lw);return true}
   if(k==='dut'){ctx.setLineDash([lw*2.6,lw*2]);inkPath(q);ctx.stroke();ctx.setLineDash([]);return true}
   if(k==='ten'){inkPath(q);ctx.stroke();if(q.length>1){let j=q.length-2;const z=q[q.length-1];while(j>0&&Math.hypot(z[0]-q[j][0],z[1]-q[j][1])<lw*4)j--;const u=un(z[0]-q[j][0],z[1]-q[j][1]);
@@ -1550,6 +1556,7 @@ function depDraw(q,lw){const n=q.length;let L=0;const cum=[0];for(let i=1;i<n;i+
     const sp=Math.max(.75,Math.min(1.08,1.15-d/40)),w=lw*f*sp;const ww=wp==null?w:wp*.5+w*.5;wp=ww;
     ctx.lineWidth=ww;ctx.beginPath();ctx.moveTo(q[i-1][0],q[i-1][1]);ctx.lineTo(q[i][0],q[i][1]);ctx.stroke()}}
 const hwFont=f=>'Segoe UI,Arial';function hwPrev(){}
+function lightSm(q){if(q.length<4)return q;const r=rsmp(q,1.6);return gsm(gsm(r,1.6),1.1)}
 
 /* ---------- ĐỒNG BỘ VỚI LỚP HỌC (web Kiến Học Toán) ---------- */
 const HOST=window.__bpHost||null;
