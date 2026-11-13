@@ -253,7 +253,7 @@
 
   async function boardRoom(el, id) {
     let d; try { d = await T("t_board_pull", { p_id: id, p_since: 0 }); } catch (e) { bdCur = null; fail(e); return; }
-    let since = d.rev, perm = d.perm, allow = new Set(d.allow || []), studs = d.students || [], showSide = store.get("kt_bd_side", true) !== false, pulling = false;
+    let since = d.rev, perm = d.perm, allow = new Set(d.allow || []), studs = d.students || [], pinBar = store.get("kt_bd_pinbar", false) === true, pinSide = store.get("kt_bd_pinside", false) === true, pulling = false;
     const PERM = [["view", "🔒", "Chỉ xem, tương tác hình", "Học sinh xem bảng và kéo thử hình trên máy mình, không viết lên bảng chung"], ["all", "✏️", "Cả lớp được viết", "Mọi học sinh trong lớp viết, vẽ được lên bảng chung"], ["pick", "👤", "Chọn em được viết", "Chỉ các em được bấm ✏️ trong danh sách mới viết được"]];
     const permBtns = {};
     const permBox = h("div", { class: "bd-perm", role: "radiogroup", "aria-label": "Quyền của học sinh" }, PERM.map(([k, ic, t, tip]) =>
@@ -261,25 +261,46 @@
     const stat = h("span", { class: "bd-st" });
     const side = h("aside", { class: "bd-side", "aria-label": "Học sinh" });
     const frame = KT.boardFrame({ role: "t", init: d, push: (x) => T("t_board_push", { p_id: id, p_meta: x.meta, p_set: x.set, p_del: x.del, p_imgs: x.imgs }) });
-    const room = h("div", { class: "bd-room" + (showSide ? "" : " no-side") },
-      h("div", { class: "bd-bar" },
+    const pinBtn = (on, tip, fn) => h("button", { type: "button", class: "bd-pin" + (on ? " on" : ""), title: tip, "aria-label": tip, "aria-pressed": String(on), onclick: fn }, "📌");
+    const barPin = pinBtn(pinBar, "Ghim thanh điều khiển", () => setPin("bar", !pinBar));
+    const hTop = h("button", { type: "button", class: "bd-hd bd-hd-top", title: "Thanh điều khiển bảng phụ" }, h("span", { "aria-hidden": "true" }, "☰"), h("b", {}, d.title), h("span", { class: "bd-hd-perm" }));
+    const hSide = h("button", { type: "button", class: "bd-hd bd-hd-side", title: "Danh sách học sinh" }, h("span", { "aria-hidden": "true" }, "👥"), h("b", { class: "bd-hd-n" }, ""));
+    const bar = h("div", { class: "bd-bar" },
         h("button", { class: "btn ghost sm bd-back", title: "Về danh sách bảng (bảng vẫn mở cho học sinh)", "aria-label": "Về danh sách bảng", onclick: () => { bdCur = null; render(); } }, "←"),
         h("div", { class: "bd-ttl" }, h("b", {}, d.title), stat), permBox, h("span", { class: "sp" }),
-        h("button", { class: "btn ghost sm", "aria-pressed": String(showSide), onclick: (e) => { showSide = !showSide; store.set("kt_bd_side", showSide); room.classList.toggle("no-side", !showSide); e.currentTarget.setAttribute("aria-pressed", String(showSide)); } }, "Học sinh"),
+        h("button", { class: "btn ghost sm", onclick: () => openP("side", true) }, "Học sinh"),
         h("button", { class: "btn ghost sm", onclick: () => { const fe = document.fullscreenElement || document.webkitFullscreenElement; if (fe) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else { const rq = room.requestFullscreen || room.webkitRequestFullscreen; rq && rq.call(room); } } }, "⛶ Trình chiếu"),
         h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Đóng bảng phụ?", "Học sinh sẽ không xem bảng này nữa. Nội dung vẫn được lưu, thầy cô mở lại lúc nào cũng được.", "Đóng bảng",
-          async () => { await T("t_board_set", { p_id: id, p_status: "closed" }).catch(fail); bdCur = null; render(); }) }, "Đóng bảng")),
-      h("div", { class: "bd-main" }, frame, side));
+          async () => { await T("t_board_set", { p_id: id, p_status: "closed" }).catch(fail); bdCur = null; render(); }) }, "Đóng bảng"), barPin);
+    const room = h("div", { class: "bd-room" + (pinBar ? " pin-bar" : "") + (pinSide ? " pin-side" : "") }, bar, h("div", { class: "bd-main" }, frame, side), hTop, hSide);
     el.append(room); document.body.classList.add("bd-teach");
-    const fitTop = () => { const t = document.querySelector(".top"); room.style.top = (t ? Math.max(0, t.getBoundingClientRect().bottom) : 0) + "px"; };
-    fitTop(); setTimeout(fitTop, 300);
+    // thanh điều khiển và danh sách học sinh tự ẩn: rê chuột / chạm vào nút nhỏ ở mép để hiện, ghim 📌 để giữ
+    const tmr = {};
+    function openP(w, v) { clearTimeout(tmr[w]); room.classList.toggle("open-" + w, !!v); }
+    function laterClose(w) { clearTimeout(tmr[w]); tmr[w] = setTimeout(() => room.classList.remove("open-" + w), 700); }
+    function setPin(w, v) {
+      if (w === "bar") { pinBar = v; store.set("kt_bd_pinbar", v); barPin.classList.toggle("on", v); barPin.setAttribute("aria-pressed", String(v)); }
+      else { pinSide = v; store.set("kt_bd_pinside", v); drawSide(); }
+      room.classList.toggle("pin-" + w, v); if (!v) room.classList.remove("open-" + w);
+    }
+    [["bar", hTop, bar], ["side", hSide, side]].forEach(([w, hd, pn]) => {
+      hd.addEventListener("mouseenter", () => openP(w, true));
+      hd.addEventListener("click", () => openP(w, !room.classList.contains("open-" + w)));
+      pn.addEventListener("mouseenter", () => clearTimeout(tmr[w]));
+      pn.addEventListener("mouseleave", () => laterClose(w));
+      hd.addEventListener("mouseleave", () => laterClose(w));
+    });
+    const onBlur = () => setTimeout(() => { if (document.activeElement === frame) { room.classList.remove("open-bar", "open-side"); } }, 0);
+    window.addEventListener("blur", onBlur);
+    const unhook = setInterval(() => { if (!room.isConnected) { window.removeEventListener("blur", onBlur); clearInterval(unhook); } }, 2000);
     const canOf = (s) => perm === "all" || (perm === "pick" && allow.has(s.id));
     function drawPerm() { Object.entries(permBtns).forEach(([k, b]) => { b.classList.toggle("on", k === perm); b.setAttribute("aria-checked", String(k === perm)); }); }
     function drawSide() {
       const on = studs.filter((s) => s.on).length, nw = studs.filter(canOf).length;
       stat.textContent = on + "/" + studs.length + " em đang xem" + (perm === "view" ? "" : " · " + nw + " em được viết");
       side.innerHTML = "";
-      side.append(h("div", { class: "bd-side-h" }, h("b", {}, "Học sinh"), h("span", {}, on + " đang xem"),
+      hSide.querySelector(".bd-hd-n").textContent = on + "/" + studs.length; hTop.querySelector(".bd-hd-perm").textContent = perm === "view" ? "🔒" : perm === "all" ? "✏️ cả lớp" : "👤 " + nw + " em";
+      side.append(h("div", { class: "bd-side-h" }, h("b", {}, "Học sinh"), h("span", {}, on + " đang xem"), pinBtn(pinSide, "Ghim danh sách học sinh", () => setPin("side", !pinSide)),
         studs.some((s) => s.n) ? h("button", { class: "btn ghost sm", onclick: () => KT.confirm("Xoá nét của học sinh?", "Xoá mọi nét học sinh đã viết, vẽ trên bảng này. Nét của thầy cô giữ nguyên.", "Xoá nét",
           async () => { await T("t_board_clear", { p_id: id }).catch(fail); pull(); }) }, "Xoá nét HS") : null));
       side.append(h("p", { class: "bd-side-tip" }, perm === "view" ? "Bấm ✏️ cạnh tên để gọi em đó lên bảng." : perm === "all" ? "Bấm ✏️ để khoá riêng một em." : "Chỉ các em có ✏️ sáng được viết."));
@@ -296,7 +317,7 @@
     }
     function setPerm(k) {
       if (k === perm) return;
-      if (k === "pick" && !allow.size) { KT.toast("Bấm ✏️ cạnh tên học sinh để chọn em được viết.", "ok"); if (!showSide) { showSide = true; room.classList.remove("no-side"); } }
+      if (k === "pick" && !allow.size) { KT.toast("Bấm ✏️ cạnh tên học sinh để chọn em được viết.", "ok"); openP("side", true); }
       save(k, allow);
     }
     function togglePen(s) {
