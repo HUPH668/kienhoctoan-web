@@ -131,7 +131,7 @@
       h("div", { class: "dd-prof" }, h("span", { class: "av lg pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("div", {}, h("b", {}, name), h("small", {}, (cls ? "Lớp " + cls + ", mã " : "Mã ") + sess.code), I ? h("small", {}, "Cấp " + I.L + ", " + I.title + ", " + KT.num(I.xp) + " KN") : null)),
       inExam ? null : [mi("achieve", "Thành tích của em", () => go("achieve")), mi("book", "Sổ câu sai", () => go("book")), mi("tests", "Bài kiểm tra", () => go("tests"))],
       window.KHCalc ? mi("calc", "Máy tính cầm tay", () => window.KHCalc.open()) : null,
-      inExam || !nbList.length ? null : mi("book", "Sổ tay kiến thức", () => go("notes")),
+      inExam ? null : mi("book", "Sổ tay kiến thức", () => go("notes")),
       inExam || !credit ? null : mi("learn", "Điểm làm bài: còn " + credit.credits, creditModal),
       inExam ? null : mi("tests", "Học phí" + (feeOwed().length ? " (" + feeOwed().length + " tháng chưa xong)" : ""), feeModal),
       mi("moon", "Đổi giao diện sáng/tối", () => document.getElementById("themeBtn").click()),
@@ -705,11 +705,16 @@
   function viewLearn(w) {
     w.append(secHead("Tự luyện", "Chọn khối lớp rồi chọn dạng đề. Mỗi lần làm em nhận một đề khác nhau."));
     const cb = creditBar(); if (cb) w.append(cb);
-    nbList.forEach((b) => w.append(h("button", { class: "nb-entry", onclick: () => openNote(null) },
-      h("span", { class: "nb-entry-ic", "aria-hidden": "true" }, "Σ"),
-      h("span", { class: "nb-entry-t" }, h("b", {}, b.title), h("small", {}, "Công thức, kiến thức trọng tâm và ví dụ mẫu — tra cứu được với mọi khối lớp. Em đã thuộc " + b.done + "/" + b.n + " mục.")),
+    const gbk = nbGradeBook(grade);
+    nbList.filter((b) => !nbIsGrade(b.id) || b === gbk).forEach((b) => w.append(h("button", { class: "nb-entry" + (nbIsGrade(b.id) ? " vb-entry" : ""), onclick: () => openNote(null, null, b.id) },
+      h("span", { class: "nb-entry-ic", "aria-hidden": "true" }, nbIsGrade(b.id) ? "▶" : "Σ"),
+      h("span", { class: "nb-entry-t" }, h("b", {}, b.title), h("small", {}, (nbIsGrade(b.id) ? "Từng bài trong SGK: ghi nhớ, ví dụ có hình vẽ và lời giải, video của thầy." : "Công thức, kiến thức trọng tâm và ví dụ mẫu — tra cứu được với mọi khối lớp.") + " Em đã thuộc " + b.done + "/" + b.n + " " + (nbIsGrade(b.id) ? "bài." : "mục."))),
       h("span", { class: "nb-entry-bar", "aria-hidden": "true" }, h("i", { style: "width:" + (b.n ? Math.round((100 * b.done) / b.n) : 0) + "%" })),
       h("span", { class: "btn sm" }, b.done ? "Đọc tiếp" : "Mở sổ tay"))));
+    if (grade >= 10 && !gbk) w.append(h("button", { class: "nb-entry vb-entry", onclick: () => openVid(grade) },
+      h("span", { class: "nb-entry-ic", "aria-hidden": "true" }, "▶"),
+      h("span", { class: "nb-entry-t" }, h("b", {}, "Video bài giảng · Toán " + grade), h("small", {}, "Mục lục theo từng bài, mỗi bài có video ngắn của thầy để xem lại lý thuyết và cách làm.")),
+      h("span", { class: "btn sm" }, "Mở mục lục")));
     w.append(h("div", { class: "grades", role: "tablist" }, [6, 7, 8, 9, 10, 11, 12].map((x) => h("button", {
       class: "grade" + (x === grade ? " on" : ""), disabled: !CUR[x], role: "tab", "aria-selected": String(x === grade),
       onclick: () => { grade = x; store.set("kt_grade", x); renderHome("learn", { cache: true }); } }, "Lớp " + x, !CUR[x] ? h("small", {}, "sắp có") : null))));
@@ -717,23 +722,78 @@
     w.append(paperSection(grade));
   }
 
+  /* ----- Sổ tay video: mục lục Toán 10–11–12 theo từng bài, mỗi bài gắn video của thầy ----- */
+  async function viewVidBook(w, g) {
+    const box = h("div", { class: "vb" }, h("p", { class: "muted", style: "padding:24px 0" }, "Đang mở mục lục…")); w.append(box);
+    await loadVids(); box.innerHTML = "";
+    const C = CUR[g]; if (!C) { box.append(h("p", { class: "muted" }, "Chưa có chương trình Toán " + g + ".")); return; }
+    const gv = (vids || []).filter((v) => v.g === g), byL = {}; gv.forEach((v) => (byL[v.l] = byL[v.l] || []).push(v));
+    const all = C.chapters.flatMap((ch) => ch.lessons), has = all.filter((L) => byL[L.no]).length;
+    const q = h("input", { type: "search", class: "search", placeholder: "Tìm bài: vectơ, tích phân, xác suất…", "aria-label": "Tìm bài trong mục lục" });
+    box.append(h("div", { class: "vb-head" }, h("div", {}, h("h1", {}, "Video bài giảng · Toán " + g), h("p", {}, all.length + " bài · " + has + " bài đã có video của thầy")), q));
+    const toc = h("nav", { class: "vb-toc", "aria-label": "Mục lục" }), main = h("div", { class: "vb-main" }), cards = {};
+    box.append(h("div", { class: "vb-grid" }, toc, main));
+    const id = (L) => "L" + g + "-" + L.no;
+    const name = (L) => "Bài " + L.no + ". " + L.name;
+    C.chapters.forEach((ch) => {
+      const lis = ch.lessons.map((L) => h("li", {}, h("a", { href: "#" + id(L), class: byL[L.no] ? "on" : "", onclick: (e) => { e.preventDefault(); const c = cards[L.no]; c.scrollIntoView({ behavior: "smooth", block: "center" }); c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash"); } },
+        h("span", { class: "vb-no" }, String(L.no)), h("span", {}, L.name), byL[L.no] ? h("i", { class: "vb-dot", title: "Có video" }) : null)));
+      toc.append(h("div", { class: "vb-ch" }, h("b", {}, "Chương " + romans[ch.no] + ". " + ch.name), h("ol", {}, lis)));
+      const sec = h("section", { class: "vb-sec" }, h("h2", {}, h("small", {}, "Chương " + romans[ch.no]), ch.name));
+      ch.lessons.forEach((L) => {
+        const vs = byL[L.no] || [];
+        const card = h("article", { class: "vb-card" + (vs.length ? "" : " none"), id: id(L), "data-q": KT.fold ? KT.fold(name(L)) : name(L).toLowerCase() },
+          h("div", { class: "vb-card-h" }, h("span", { class: "vb-no big" }, String(L.no)), h("b", {}, L.name)),
+          vs.length ? h("div", { class: "vb-vids" }, vs.map((v) => h("button", { type: "button", class: "vcard", onclick: () => KT.videoModal(vs, name(L)) },
+            h("span", { class: "vi" }, "▶"), h("span", {}, h("b", {}, v.title || "Video bài giảng"), h("small", {}, v.p === "yt" ? "YouTube" : "TikTok")))))
+            : h("p", { class: "vb-empty" }, "Thầy chưa gắn video cho bài này."));
+        cards[L.no] = card; sec.append(card);
+      });
+      main.append(sec);
+    });
+    const fold = (t) => (KT.fold ? KT.fold(t) : t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d"));
+    q.addEventListener("input", () => { const t = fold(q.value.trim()); main.querySelectorAll(".vb-card").forEach((c) => { c.hidden = !!t && !fold(c.textContent).includes(t); });
+      main.querySelectorAll(".vb-sec").forEach((s) => { s.hidden = ![...s.querySelectorAll(".vb-card")].some((c) => !c.hidden); }); });
+  }
   /* ----- Sổ tay kiến thức: thầy sửa file .tex trên máy, công cụ đồng bộ đưa lên. Mọi khối đều tra cứu được ----- */
   var nbList = [], nbTick = [];
-  let nbBook = null, nbFigs = {}, nbQ = "", nbKey = null, nbFocus = null;
+  let nbBook = null, nbFigs = {}, nbQ = "", nbKey = null, nbFocus = null, nbKeyBook = null;
+  const nbCache = {};
+  // sổ theo khối: sotay10, sotay11, sotay12 (mỗi mục là một bài SGK); sổ chung: các sổ còn lại (vd sotay9)
+  const nbIsGrade = (id) => /^sotay1[0-2]$/.test(id || "");
+  const nbGradeBook = (g) => nbList.find((b) => b.id === "sotay" + g);
+  const nbMain = () => nbList.find((b) => !nbIsGrade(b.id));
+  const nbLastKey = (id) => "kt_nb_last" + (nbIsGrade(id) ? "_" + id : "");
+  async function nbFetch(meta) {
+    let b = nbCache[meta.id];
+    if (!b || b.updated_at !== meta.updated_at) { b = await rpc("nb_get", { p_id: meta.id }); if (b.error) throw new Error(b.error); nbCache[meta.id] = b; }
+    return b;
+  }
   const nbRM = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   // mở sổ tay tại một mục (và khung kiến thức thứ i trong mục đó)
-  function openNote(key, box) { nbKey = key || nbKey; nbFocus = box != null ? +box : null; nbQ = ""; go("notes"); }
+  function openNote(key, box, book) {
+    const m = nbMain(); book = book || (m && m.id);
+    if (book !== nbKeyBook) nbKey = null;
+    nbKeyBook = book; nbKey = key || nbKey; nbFocus = box != null ? +box : null; nbQ = "";
+    nbView = nbIsGrade(book) ? "v" + book.slice(5) : "main"; store.set("kt_nb_view", nbView); go("notes");
+  }
+  let nbView = store.get("kt_nb_view", "main");
+  function openVid(g) { nbView = "v" + g; store.set("kt_nb_view", nbView); go("notes"); }
   async function viewNotes(w) {
-    const meta = nbList[0];
+    const mainB = nbMain();
+    if (!mainB && nbView === "main") nbView = "v" + (grade >= 10 ? grade : 10);
+    const books = (mainB ? [["main", "📘 " + mainB.title]] : []).concat([10, 11, 12].map((g) => ["v" + g, nbGradeBook(g) ? "📗 Sổ tay Toán " + g : "🎬 Video Toán " + g]));
+    w.append(h("div", { class: "nb-books", role: "tablist", "aria-label": "Chọn sổ tay" }, books.map(([k, t]) => h("button", { type: "button", role: "tab", class: "nb-book" + (k === nbView ? " on" : ""), "aria-selected": String(k === nbView),
+      onclick: () => { if (k === nbView) return; nbView = k; store.set("kt_nb_view", k); go("notes"); } }, t))));
+    let meta = mainB;
+    if (nbView !== "main") { const g = +nbView.slice(1) || 10; meta = nbGradeBook(g); if (!meta) return viewVidBook(w, g); }
     if (!meta) { w.append(h("div", { class: "empty-state" }, h("h2", {}, "Chưa có sổ tay"), h("p", {}, "Thầy cô chưa đưa sổ tay kiến thức lên web."), linkBtn("Về Học tập", "learn"))); return; }
     const box = h("div", { class: "nb" }, h("p", { class: "muted", style: "padding:24px 0" }, "Đang mở sổ tay…"));
     w.append(box);
     try {
-      if (!nbBook || nbBook.id !== meta.id || nbBook.updated_at !== meta.updated_at) {
-        const b = await rpc("nb_get", { p_id: meta.id });
-        if (b.error) throw new Error(b.error);
-        nbBook = b;
-      }
+      nbBook = await nbFetch(meta);
+      if (nbIsGrade(meta.id)) await loadVids();
+      if (nbKeyBook !== meta.id) { nbKeyBook = meta.id; nbKey = null; }
       const ids = [...new Set(nbBook.secs.flatMap((x) => [...x.html.matchAll(/data-fig="([0-9a-f]+)"/g)].map((m) => m[1])))].filter((k) => !nbFigs[k]);
       for (let i = 0; i < ids.length; i += 150) Object.assign(nbFigs, await api.rpc("get_figs", { p_ids: ids.slice(i, i + 150) }));
     } catch (e) { box.innerHTML = ""; box.append(h("p", { class: "muted" }, "Chưa mở được sổ tay. Em thử tải lại trang nhé.")); if (/SESSION_EXPIRED/.test(e.message)) fail(e); return; }
@@ -741,13 +801,15 @@
   }
   function drawNotes(box) {
     const B = nbBook, marks = new Set(B.marks || []);
+    const GB = nbIsGrade(B.id), G = GB ? +B.id.slice(5) : 0, PW = GB ? "Chương " : "Phần ";
+    const vidsOf = (x) => GB && x.no ? (vids || []).filter((v) => v.g === G && v.l === +x.no) : [];
     const secs = B.secs, learn = secs.filter((x) => x.no);
     if (!nbKey || !secs.some((x) => x.key === nbKey)) {
-      const last = store.get("kt_nb_last");
+      const last = store.get(nbLastKey(B.id));
       nbKey = secs.some((x) => x.key === last) ? last : (learn.find((x) => !marks.has(x.key)) || secs[0]).key;
     }
     const prog = h("span", { class: "nb-prog" });
-    const setProg = () => { const d = learn.filter((x) => marks.has(x.key)).length; prog.textContent = "Đã thuộc " + d + "/" + learn.length + " mục"; const m = nbList.find((x) => x.id === B.id); if (m) m.done = d; nbTick.forEach((t) => (t.done = marks.has(t.key))); };
+    const setProg = () => { const d = learn.filter((x) => marks.has(x.key)).length; prog.textContent = "Đã thuộc " + d + "/" + learn.length + (GB ? " bài" : " mục"); const m = nbList.find((x) => x.id === B.id); if (m) m.done = d; nbTick.forEach((t) => { if (t.book === B.id) t.done = marks.has(t.key); }); };
     const q = h("input", { type: "search", class: "search", placeholder: "Tra cứu: Viète, tiếp tuyến, hằng đẳng thức…", value: nbQ, "aria-label": "Tra cứu trong sổ tay" });
     const toc = h("nav", { class: "nb-toc", "aria-label": "Mục lục sổ tay" });
     const main = h("div", { class: "nb-main", "aria-live": "polite" });
@@ -777,24 +839,24 @@
     // mục lục
     let lastPart = null;
     secs.forEach((x) => {
-      if (x.part !== lastPart) { lastPart = x.part; toc.append(h("div", { class: "nb-toc-p" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : B.title)); }
+      if (x.part !== lastPart) { lastPart = x.part; toc.append(h("div", { class: "nb-toc-p" }, x.part ? PW + x.part + " · " + partName(x.part) : B.title)); }
       const a = h("a", { href: "#notes", onclick: (e) => { e.preventDefault(); show(x.key, null, true); } },
-        x.no ? h("b", {}, x.no) : h("b", {}, "✎"), h("span", { html: x.title }), h("i", { class: "nb-dot", "aria-hidden": "true" }));
+        x.no ? h("b", {}, x.no) : h("b", {}, "✎"), h("span", { html: x.title }), vidsOf(x).length ? h("i", { class: "nb-hasv", title: "Có video" }, "▶") : null, h("i", { class: "nb-dot", "aria-hidden": "true" }));
       tocEls[x.key] = a; toc.append(a);
     });
     // một mục
     let lastIdx = -1;
     function show(key, boxIdx, fromToc) {
       const dir = lastIdx < 0 ? 0 : secs.findIndex((s) => s.key === key) - lastIdx;
-      nbKey = key; store.set("kt_nb_last", key);
+      nbKey = key; store.set(nbLastKey(B.id), key);
       if (nbQ) { nbQ = ""; q.value = ""; }
       const i = secs.findIndex((s) => s.key === key), x = secs[i], prev = secs[i - 1], next = secs[i + 1];
       det.querySelector(".nb-cur").innerHTML = (x.no ? x.no + " · " : "") + x.title;
       lastIdx = i;
       const art = h("article", { class: "nb-sec" + (dir > 0 ? " fwd" : dir < 0 ? " back" : ""), tabindex: "-1" },
-        h("p", { class: "nb-crumb" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : ""),
+        h("p", { class: "nb-crumb" }, x.part ? PW + x.part + " · " + partName(x.part) : ""),
         h("header", { class: "nb-sh" }, x.no ? h("span", { class: "nb-no" }, x.no) : null, h("h2", { html: x.title }), x.no ? tick(x) : null),
-        h("div", { class: "nb-body", html: x.html }),
+        GB ? lessonBody(x) : h("div", { class: "nb-body", html: x.html }),
         h("nav", { class: "nb-pn", "aria-label": "Chuyển mục" },
           prev ? h("button", { class: "nb-pv", onclick: () => show(prev.key, null, true) }, h("small", {}, "← Mục trước"), h("span", { html: (prev.no ? prev.no + " · " : "") + prev.title })) : h("span"),
           next ? h("button", { class: "nb-nx", onclick: () => show(next.key, null, true) }, h("small", {}, "Mục sau →"), h("span", { html: (next.no ? next.no + " · " : "") + next.title })) : h("span")));
@@ -812,6 +874,21 @@
         const bx = art.querySelectorAll(".nb-ct, .nb-chuy")[boxIdx - 1];
         if (bx) { setTimeout(() => bx.scrollIntoView({ behavior: nbRM() ? "auto" : "smooth", block: "center" }), 60); bx.classList.add("nb-hl"); setTimeout(() => bx.classList.remove("nb-hl"), 2600); }
       }
+    }
+    // sổ theo khối: mỗi bài chia ba phần – Ghi nhớ, Ví dụ, Video
+    function lessonBody(x) {
+      const tmp = h("div", { html: x.html }), memo = [], ex = [];
+      [...tmp.childNodes].forEach((n) => (n.nodeType === 1 && n.matches(".nb-ex, .nb-mh") ? ex : memo).push(n));
+      tmp.querySelectorAll(".nb-ct > .nb-bh").forEach((b) => { if (b.textContent.replace(/Σ/, "").trim() === "Ghi nhớ") b.remove(); });
+      const vs = vidsOf(x), nm = "Bài " + +x.no + ". " + x.title.replace(/<[^>]+>/g, "");
+      const part = (cls, ic, t, sub, kids) => h("section", { class: "nl-part " + cls }, h("h3", {}, h("span", { class: "nb-pi", "aria-hidden": "true" }, ic), t, sub ? h("small", {}, sub) : null), kids);
+      return h("div", { class: "nb-body nb-lesson" },
+        part("nb-p-memo", "Σ", "Ghi nhớ", "", h("div", {}, memo)),
+        ex.length ? part("nb-p-ex", "✎", "Ví dụ", ex.length + " ví dụ có lời giải", h("div", {}, ex)) : null,
+        part("nb-p-vid", "▶", "Video bài giảng", "", vs.length
+          ? h("div", { class: "vb-vids" }, vs.map((v) => h("button", { type: "button", class: "vcard", onclick: () => KT.videoModal(vs, nm) },
+              h("span", { class: "vi" }, "▶"), h("span", {}, h("b", {}, v.title || "Video bài giảng"), h("small", {}, v.p === "yt" ? "YouTube" : "TikTok")))))
+          : h("p", { class: "vb-empty" }, "Thầy chưa gắn video cho bài này.")));
     }
     const fitFigs = (root) => root.querySelectorAll("img.fig").forEach((img) => {   // hình vẽ cho khổ A6: phóng to hơn hình câu hỏi
       const fit = () => { if (img.naturalWidth) img.style.width = Math.round(img.naturalWidth * 2) + "px"; };
@@ -848,7 +925,7 @@
       if (to) show(to.key, null, true);
     }, { passive: true });
     box.innerHTML = "";
-    box.append(h("div", { class: "nb-head" }, h("div", {}, h("h1", {}, B.title), h("p", {}, prog, " · Dùng cho mọi khối lớp · Cập nhật " + KT.dt(B.updated_at))), q),
+    box.append(h("div", { class: "nb-head" }, h("div", {}, h("h1", {}, B.title), h("p", {}, prog, (GB ? " · Mỗi bài: ghi nhớ, ví dụ, video" : " · Dùng cho mọi khối lớp") + " · Cập nhật " + KT.dt(B.updated_at))), q),
       stripBar,
       h("div", { class: "nb-grid" }, h("aside", { class: "nb-side" }, det), main));
     setProg();
@@ -860,9 +937,9 @@
   /* ----- Dải kiến thức chạy ngang: các khung kiến thức của sổ tay, chạm để mở ----- */
   let tickPaused = false;
   function nbTicker() {
-    if (!nbTick.length) return null;
-    const items = nbTick.slice(0, 36);
-    const chip = (t) => h("button", { class: "tk-chip" + (t.done ? " done" : ""), onclick: () => openNote(t.key, t.i), title: "Mở sổ tay: " + t.sec.replace(/<[^>]+>/g, "") },
+    const items = nbTick.filter((t) => !nbIsGrade(t.book) || t.book === "sotay" + grade).slice(0, 36);
+    if (!items.length) return null;
+    const chip = (t) => h("button", { class: "tk-chip" + (t.done ? " done" : ""), onclick: () => openNote(t.key, t.i, t.book), title: "Mở sổ tay: " + t.sec.replace(/<[^>]+>/g, "") },
       h("span", { class: "tk-no" }, t.no), h("span", { class: "tk-t" }, h("b", { html: t.box }), h("small", { html: t.sec })), t.done ? h("span", { class: "tk-ok", "aria-label": "đã thuộc" }, "✓") : null);
     const run = h("div", { class: "tk-run" }, items.map(chip), items.map((t) => { const c = chip(t); c.setAttribute("aria-hidden", "true"); c.tabIndex = -1; return c; }));
     run.style.setProperty("--tk-dur", Math.max(40, items.length * 5) + "s");
@@ -878,7 +955,7 @@
   /* ----- Nút Sổ tay nổi ở góc màn hình: bấm để hiện mục lục, chọn mục để mở ----- */
   let fabEl = null;
   function nbFab() {
-    if (!nbList.length) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
+    if (!nbMain()) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
     if (fabEl && document.body.contains(fabEl)) return;
     const btn = h("button", { class: "fab-btn", "aria-label": "Mục lục sổ tay kiến thức", "aria-expanded": "false", "aria-haspopup": "dialog" },
       h("span", { class: "fab-ring", "aria-hidden": "true" }), h("span", { class: "fab-ic", "aria-hidden": "true" }, "Σ"), h("span", { class: "fab-lab" }, "Mục lục"));
@@ -889,24 +966,25 @@
     const onKey = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
     function close() { if (panel.hidden) return; panel.hidden = true; btn.setAttribute("aria-expanded", "false"); fabEl.classList.remove("open"); document.removeEventListener("pointerdown", onDoc); document.removeEventListener("keydown", onKey); }
     async function open() {
-      const meta = nbList[0];
+      const meta = nbMain();
       panel.innerHTML = ""; panel.hidden = false; btn.setAttribute("aria-expanded", "true"); fabEl.classList.add("open");
       setTimeout(() => { document.addEventListener("pointerdown", onDoc); document.addEventListener("keydown", onKey); }, 0);
-      if (!nbBook || nbBook.id !== meta.id || nbBook.updated_at !== meta.updated_at) {
+      let B = nbCache[meta.id];
+      if (!B || B.updated_at !== meta.updated_at) {
         panel.append(h("p", { class: "fab-wait" }, "Đang mở mục lục…"));
-        try { const b = await rpc("nb_get", { p_id: meta.id }); if (b.error) throw new Error(b.error); nbBook = b; }
+        try { B = await nbFetch(meta); }
         catch (e) { panel.innerHTML = ""; panel.append(h("p", { class: "fab-wait" }, "Chưa mở được mục lục. Em thử lại sau nhé.")); return; }
         if (panel.hidden) return;
       }
-      const B = nbBook, marks = new Set(B.marks || []), learn = B.secs.filter((x) => x.no);
+      const marks = new Set(B.marks || []), learn = B.secs.filter((x) => x.no);
       const done = learn.filter((x) => marks.has(x.key)).length;
       const partName = (no) => { const p = (B.parts || []).find((x) => x.no === no); return p ? p.name : ""; };
       const list = h("nav", { class: "fab-toc", "aria-label": "Mục lục" });
       let lastPart = null, i = 0;
       B.secs.forEach((x) => {
         if (x.part !== lastPart) { lastPart = x.part; list.append(h("div", { class: "fab-part" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : "")); }
-        list.append(h("button", { class: "fab-it" + (marks.has(x.key) ? " done" : "") + (x.key === store.get("kt_nb_last") ? " last" : ""), style: "--d:" + Math.min(i++, 14) * 22 + "ms",
-          onclick: () => { close(); openNote(x.key); } },
+        list.append(h("button", { class: "fab-it" + (marks.has(x.key) ? " done" : "") + (x.key === store.get(nbLastKey(meta.id)) ? " last" : ""), style: "--d:" + Math.min(i++, 14) * 22 + "ms",
+          onclick: () => { close(); openNote(x.key, null, meta.id); } },
           h("span", { class: "fab-no" }, x.no || "✎"), h("span", { class: "fab-t", html: x.title }), marks.has(x.key) ? h("span", { class: "fab-ok", "aria-label": "đã thuộc" }, "✓") : null));
       });
       panel.innerHTML = "";

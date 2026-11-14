@@ -213,7 +213,7 @@
   /* ---------- toán & hình ---------- */
   const MACROS = {
     "\\hoac": "\\left[\\begin{aligned}#1\\end{aligned}\\right.", "\\heva": "\\left\\{\\begin{aligned}#1\\end{aligned}\\right.",
-    "\\vv": "\\overrightarrow{#1}", "\\vec": "\\overrightarrow{#1}", "\\R": "\\mathbb{R}", "\\True": "", "\\False": "",
+    "\\vv": "\\overrightarrow{#1}", "\\vec": "\\overrightarrow{#1}", "\\R": "\\mathbb{R}", "\\heo": "\\left\\{\\begin{array}{l}#1\\end{array}\\right.", "\\True": "", "\\False": "",
     "\\hfill": "", "\\centerdot": "\\cdot", "\\tron": "\\circ", "\\allowdisplaybreaks": "", "\\notag": "", "\\nonumber": "",
   };
   KT.typeset = (el, figs) => {

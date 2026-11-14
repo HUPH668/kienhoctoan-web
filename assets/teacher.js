@@ -110,7 +110,7 @@
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
     w.append(dashHead());
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
-      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; bdCur = null; render(); } }, lab))));
+      onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; bdCur = null; tvOn = false; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
     ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, board: tabBoard, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
   }
@@ -218,6 +218,7 @@
   let bdCur = null;
   async function tabBoard(el) {
     if (bdCur) return boardRoom(el, bdCur);
+    if (tvOn) return tvRoom(el);
     el.append(h("div", { class: "review-t" }, h("h2", { style: "margin:0" }, "Bảng phụ lớp học")));
     const picked = new Set((store.get("kt_bd_cls", []) || []).map(String).filter((k) => ov.classes.some((c) => String(c.id) === k)));
     const title = h("input", { id: "bdT", maxlength: 120, placeholder: "VD: Chữa bài tập Định lí Pythagore" });
@@ -233,6 +234,9 @@
       store.set("kt_bd_cls", [...picked]);
       try { const r = await T("t_board_open", { p_title: title.value, p_classes: [...picked].map(Number) }); bdCur = r.id; render(); } catch (e) { fail(e); }
     } }, "Mở bảng cho lớp");
+    el.append(h("div", { class: "panel bd-tvp" }, h("div", {}, h("b", {}, "📺 Màn hình tivi, máy chiếu"),
+      h("p", {}, "Tivi không kết nối được với máy tính bảng? Mở trang giáo viên trên tivi, đăng nhập cùng tài khoản, vào Bảng phụ rồi bấm nút bên cạnh. Tivi tự hiện bảng đang mở và chạy theo mọi nét thầy cô viết, vẽ trên máy tính bảng.")),
+      h("button", { class: "btn", onclick: () => { tvOn = true; render(); } }, "📺 Chiếu lên tivi")));
     el.append(h("div", { class: "panel bd-new" },
       h("div", { class: "bd-new-tx" }, h("h3", {}, "Mở bảng mới"),
         h("p", {}, "Học sinh lớp được chọn thấy bảng của thầy cô ngay trên máy mình và kéo thử được các hình động. Thầy cô cho cả lớp hoặc từng em viết, vẽ lên bảng chung, rồi khoá lại lúc nào cũng được.")),
@@ -249,6 +253,41 @@
         if (b.status !== "open") { try { await T("t_board_set", { p_id: b.id, p_status: "open" }); } catch (e) { return fail(e); } }
         bdCur = b.id; render();
       } }, b.status === "open" ? "Vào bảng" : "Mở lại"))));
+  }
+
+  let tvOn = false;
+  async function tvRoom(el) {
+    document.body.classList.add("bd-teach");
+    const st = h("span", { class: "bd-tv-st" }, "Đang tìm bảng đang mở…");
+    const wait = h("div", { class: "bd-tv-wait" }, h("div", { class: "bd-tv-ic", "aria-hidden": "true" }, "📺"), h("b", {}, "Chưa có bảng phụ nào đang mở"), h("span", {}, "Thầy cô mở bảng trên máy tính bảng, tivi sẽ tự hiện bảng."));
+    const fsBtn = h("button", { class: "btn ghost sm", title: "Toàn màn hình", onclick: () => { const fe = document.fullscreenElement || document.webkitFullscreenElement; if (fe) (document.exitFullscreen || document.webkitExitFullscreen).call(document); else { const rq = room.requestFullscreen || room.webkitRequestFullscreen; rq && rq.call(room); } } }, "⛶ Toàn màn hình");
+    const bar = h("div", { class: "bd-tvbar" }, h("button", { class: "btn ghost sm", onclick: () => { tvOn = false; render(); } }, "← Thoát"), st, fsBtn);
+    const room = h("div", { class: "bd-room bd-tv" }, wait, bar);
+    el.append(room);
+    let cur = null, frame = null, since = 0, busy = false, tick = 0;
+    const show = (v) => { wait.style.display = v ? "" : "none"; };
+    async function load(id) {
+      const d = await T("t_board_pull", { p_id: id, p_since: 0 });
+      if (frame) frame.remove();
+      frame = KT.boardFrame({ role: "v", init: d, push: () => ({}) });
+      room.prepend(frame); cur = id; since = d.rev; show(false);
+      st.textContent = "Đang chiếu: " + d.title;
+    }
+    async function pick() {
+      const list = await T("t_board_list"); const b = list.find((x) => x.status === "open");
+      if (!b) { if (frame) { frame.remove(); frame = null; } cur = null; show(true); st.textContent = "Chờ thầy cô mở bảng…"; return; }
+      if (b.id !== cur) await load(b.id);
+    }
+    async function step() {
+      if (busy || document.visibilityState !== "visible") return; busy = true;
+      try {
+        if (!cur || tick % 8 === 0) await pick();
+        const sy = frame && frame.sy();
+        if (cur && sy) { const r = await T("t_board_pull", { p_id: cur, p_since: since }); sy.apply(r, false); since = Math.max(since, r.rev); if (r.status !== "open") await pick(); }
+      } catch (e) { st.textContent = "Mất kết nối, đang thử lại…"; }
+      tick++; busy = false;
+    }
+    step(); poll = setInterval(step, 1000);
   }
 
   async function boardRoom(el, id) {
@@ -915,20 +954,40 @@
     try { all = await api.rpc("videos_list", {}); } catch (e) { fail(e); }
     function drawList() {
       listBox.innerHTML = "";
-      const g = +gSel.value, mine = all.filter((v) => v.g === g);
-      const byG = {}; all.forEach((v) => (byG[v.g] = (byG[v.g] || 0) + 1));
-      listBox.append(h("div", { class: "section-t" }, "Video đã thêm · Toán " + g + " (" + mine.length + ")" + (all.length > mine.length ? " — tổng " + all.length + " video: " + Object.entries(byG).map(([k, n]) => "lớp " + k + ": " + n).join(", ") : "")));
-      if (!mine.length) { listBox.append(h("div", { class: "panel empty" }, "Khối này chưa có video nào.")); return; }
-      const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, ["Bài", "Video", ""].map((x) => h("th", {}, x)))));
-      const body = h("tbody");
-      mine.forEach((v) => body.append(h("tr", {}, h("td", {}, KT.lessonName(v.g + "-" + v.l)),
-        h("td", {}, h("b", {}, v.title || "(chưa đặt tên)"), h("div", { class: "sub", style: "overflow-wrap:anywhere" }, (v.p === "yt" ? "YouTube · " : "TikTok · ") + v.url)),
-        h("td", { style: "white-space:nowrap" },
-          h("button", { class: "btn ghost sm", onclick: () => KT.videoModal([v], v.title || "Video") }, "Xem"), " ",
-          h("button", { class: "btn ghost sm", onclick: () => { editId = v.id; gSel.value = v.g; fillL(); lSel.value = v.l; url.value = v.url; title.value = v.title; drawPrev(); saveBtn.textContent = "Lưu thay đổi"; window.scrollTo({ top: 0, behavior: "smooth" }); } }, "Sửa"), " ",
-          h("button", { class: "btn ghost sm danger", onclick: () => KT.confirm("Xoá video này?", "Học sinh sẽ không thấy video này nữa (video trên TikTok không bị ảnh hưởng).", "Xoá", async () => {
-            try { await T("t_video_delete", { p_id: v.id }); all = all.filter((x) => x.id !== v.id); drawList(); KT.toast("Đã xoá", "ok"); } catch (e) { fail(e); } }) }, "Xoá")))));
-      tb.append(body); listBox.append(h("div", { class: "tbl-wrap" }, tb));
+      const g = +gSel.value, mine = all.filter((v) => v.g === g), byL = {};
+      mine.forEach((v) => (byL[v.l] = byL[v.l] || []).push(v));
+      const lessons = CUR[g].chapters.flatMap((ch) => ch.lessons), has = lessons.filter((L) => byL[L.no]).length;
+      listBox.append(h("div", { class: "section-t" }, "Mục lục sổ tay video · Toán " + g + " — " + has + "/" + lessons.length + " bài đã có video"),
+        h("p", { class: "sub", style: "margin:-4px 0 10px" }, "Dán link TikTok vào ô của bài rồi bấm Gắn. Học sinh xem ở Sổ tay → Video Toán " + g + ", ở thẻ bài học và thư viện video ôn tập."));
+      const quick = (L) => {
+        const inp = h("input", { type: "url", class: "vt-in", placeholder: "Dán link TikTok của bài " + L.no + "…", "aria-label": "Link video bài " + L.no });
+        const btn = h("button", { class: "btn sm", onclick: async () => {
+          const u = inp.value.trim(); if (!u) { inp.focus(); return; }
+          if (!parse(u)) { KT.toast(/vt\.tiktok|vm\.tiktok/.test(u) ? "Đây là link rút gọn. Mở link trên trình duyệt máy tính rồi chép lại link đầy đủ (…tiktok.com/@kenh/video/số)." : "Chưa đọc được link. Dán link đầy đủ của video TikTok hoặc YouTube.", "bad"); return; }
+          btn.disabled = true;
+          try { const x = await T("t_video_save", { p_g: g, p_l: L.no, p_url: u, p_title: L.name, p_id: null });
+            if (x.error) { KT.toast(x.error, "bad"); btn.disabled = false; return; }
+            KT.toast("Đã gắn video cho Bài " + L.no, "ok"); all = await api.rpc("videos_list", {}); drawList();
+            const r = document.getElementById("vt-" + g + "-" + L.no); if (r) r.scrollIntoView({ block: "center" }); }
+          catch (ex) { btn.disabled = false; fail(ex); } } }, "Gắn");
+        inp.addEventListener("keydown", (e) => { if (e.key === "Enter") btn.click(); });
+        return h("div", { class: "vt-add" }, inp, btn);
+      };
+      CUR[g].chapters.forEach((ch) => {
+        const tb = h("table", { class: "tbl vt-tbl" }, h("thead", {}, h("tr", {}, h("th", { colspan: 2 }, "Chương " + romans[ch.no] + ". " + ch.name))));
+        const body = h("tbody");
+        ch.lessons.forEach((L) => {
+          const vs = byL[L.no] || [];
+          body.append(h("tr", { id: "vt-" + g + "-" + L.no, class: vs.length ? "has" : "" },
+            h("td", { class: "vt-l" }, h("span", { class: "vt-no" }, String(L.no)), h("span", {}, L.name), h("small", {}, vs.length ? "✓ " + vs.length + " video" : "Chưa có video")),
+            h("td", {}, vs.map((v) => h("div", { class: "vt-v" }, h("span", { class: "vt-vt" }, (v.p === "yt" ? "▶ YouTube · " : "▶ TikTok · ") + (v.title || "(chưa đặt tên)")),
+              h("button", { class: "btn ghost sm", onclick: () => KT.videoModal([v], v.title || "Video") }, "Xem"),
+              h("button", { class: "btn ghost sm", onclick: () => { editId = v.id; gSel.value = v.g; fillL(); lSel.value = v.l; url.value = v.url; title.value = v.title; drawPrev(); saveBtn.textContent = "Lưu thay đổi"; window.scrollTo({ top: 0, behavior: "smooth" }); } }, "Sửa"),
+              h("button", { class: "btn ghost sm danger", onclick: () => KT.confirm("Xoá video này?", "Học sinh sẽ không thấy video này nữa (video trên TikTok không bị ảnh hưởng).", "Xoá", async () => {
+                try { await T("t_video_delete", { p_id: v.id }); all = all.filter((x) => x.id !== v.id); drawList(); KT.toast("Đã xoá", "ok"); } catch (e) { fail(e); } }) }, "Xoá"))), quick(L))));
+        });
+        tb.append(body); listBox.append(h("div", { class: "tbl-wrap vt-wrap" }, tb));
+      });
     }
     drawList();
   }

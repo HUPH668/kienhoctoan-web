@@ -1564,10 +1564,10 @@ function __syFix(s){if(!SY)return s;try{const d=JSON.parse(s),pk=Pg().key;const 
   d.o=keep.concat(Pg().objs.filter(o=>SY.foreign(pk,o.id)&&!SY.gone(pk,o.id)&&!ids.has(o.id)));return JSON.stringify(d)}catch(e){return s}}
 function __syDeny(id){if(!SY||SY.canWrite()||['sel','pan','laser'].includes(id))return false;say('🔒 Bảng đang khoá: em xem và kéo thử hình trên máy mình. Khi thầy/cô cho phép, em viết, vẽ được lên bảng chung.');return true}
 if(HOST){
-  const T=HOST.role==='t',ME=HOST.me||null,myOwn=T?null:ME;
+  const T=HOST.role==='t',VW=HOST.role==='v',ME=HOST.me||null,myOwn=T?null:VW?'~xem':ME;
   const K=(pg,id)=>pg+'|'+id;
   const mirror=new Map(),goneS=new Set(),sentImgs=new Set();
-  let metaJ='',metaKeys=new Set(),canW=T||!!HOST.can,busy=false,lastSend=0,waitTo=0;
+  let metaJ='',metaKeys=new Set(),canW=T||(!VW&&!!HOST.can),busy=false,lastSend=0,waitTo=0;
   const BIG=()=>1e12+Math.floor(Math.random()*4e15);
   const newKey=()=>'p'+Math.random().toString(36).slice(2,9);
   const vOut=p=>{const v=p.view,s=50*v.z;return {cx:+((W/2-v.ox)/s).toFixed(4),cy:+((v.oy-H/2)/s).toFixed(4),z:v.z,w:W,h:H}};
@@ -1631,7 +1631,7 @@ if(HOST){
   SY={canWrite:()=>canW,foreign:(pg,id)=>{const m=mirror.get(K(pg,id));return !!m&&m.own!==myOwn},gone:(pg,id)=>goneS.has(K(pg,id)),
     apply,setCan,resetAll,flush:tick,stat:()=>({n:pages.reduce((a,p)=>a+p.objs.length,0),pages:pages.length,pi,can:canW,types:Pg().objs.map(o=>o.t).join(',')}),cv:()=>Pg().objs.filter(o=>o.t==='cpy').map(o=>cpyVerts(o).map(v=>[byId(v.id).n,Math.round(v.q[0]),Math.round(v.q[1])])),pts:()=>Pg().objs.filter(o=>PTS.has(o.t)).map(o=>{const g=geo(o.id);if(!g)return null;const q=S(g.x,g.y);return [o.n,Math.round(q[0]),Math.round(q[1])]}).filter(Boolean)};
   window.__bpSY=SY;
-  document.body.classList.add(T?'sy-t':'sy-s');document.body.classList.toggle('sy-lock',!canW);
+  document.body.classList.add(T?'sy-t':VW?'sy-v':'sy-s');document.body.classList.toggle('sy-lock',!canW);
   if(HOST.init)apply(HOST.init,true);
   if(T&&!(HOST.init&&HOST.init.meta))pages.forEach(p=>{if(!p.key)p.key=newKey()});
   if(!T&&!canW&&!['sel','pan','laser'].includes(tool))setTool('sel');
