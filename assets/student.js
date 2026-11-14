@@ -955,7 +955,7 @@
   /* ----- Nút Sổ tay nổi ở góc màn hình: bấm để hiện mục lục, chọn mục để mở ----- */
   let fabEl = null;
   function nbFab() {
-    if (!nbMain()) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
+    if (!nbList.length) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
     if (fabEl && document.body.contains(fabEl)) return;
     const btn = h("button", { class: "fab-btn", "aria-label": "Mục lục sổ tay kiến thức", "aria-expanded": "false", "aria-haspopup": "dialog" },
       h("span", { class: "fab-ring", "aria-hidden": "true" }), h("span", { class: "fab-ic", "aria-hidden": "true" }, "Σ"), h("span", { class: "fab-lab" }, "Mục lục"));
@@ -965,12 +965,21 @@
     const onDoc = (e) => { if (!fabEl.contains(e.target)) close(); };
     const onKey = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
     function close() { if (panel.hidden) return; panel.hidden = true; btn.setAttribute("aria-expanded", "false"); fabEl.classList.remove("open"); document.removeEventListener("pointerdown", onDoc); document.removeEventListener("keydown", onKey); }
-    async function open() {
-      const meta = nbMain();
+    let fabPick = null;
+    async function open(pick) {
+      // chọn sổ: sổ đang đọc → sổ của khối đang chọn → sổ chung
+      const onGrade = location.hash === "#notes" && /^v1[0-2]$/.test(nbView) && nbGradeBook(+nbView.slice(1));
+      const meta = nbList.find((b) => b.id === pick) || nbList.find((b) => b.id === fabPick) || onGrade || (location.hash === "#notes" && nbView === "main" && nbMain()) || nbGradeBook(grade) || nbMain() || nbList[0];
+      fabPick = meta.id;
+      const GBk = nbIsGrade(meta.id), PWk = GBk ? "Chương " : "Phần ";
+      const order = [nbMain(), nbGradeBook(10), nbGradeBook(11), nbGradeBook(12)].filter(Boolean);
+      const tabs = order.length > 1 ? h("div", { class: "fab-books", role: "tablist", "aria-label": "Chọn sổ tay" }, order.map((b) => h("button", { type: "button", role: "tab", class: "fab-book" + (b.id === meta.id ? " on" : ""), "aria-selected": String(b.id === meta.id),
+        onclick: (e) => { e.stopPropagation(); if (b.id !== meta.id) open(b.id); } }, nbIsGrade(b.id) ? "Toán " + b.id.slice(5) : "Sổ chung"))) : null;
       panel.innerHTML = ""; panel.hidden = false; btn.setAttribute("aria-expanded", "true"); fabEl.classList.add("open");
       setTimeout(() => { document.addEventListener("pointerdown", onDoc); document.addEventListener("keydown", onKey); }, 0);
       let B = nbCache[meta.id];
       if (!B || B.updated_at !== meta.updated_at) {
+        if (tabs) panel.append(tabs);
         panel.append(h("p", { class: "fab-wait" }, "Đang mở mục lục…"));
         try { B = await nbFetch(meta); }
         catch (e) { panel.innerHTML = ""; panel.append(h("p", { class: "fab-wait" }, "Chưa mở được mục lục. Em thử lại sau nhé.")); return; }
@@ -982,7 +991,7 @@
       const list = h("nav", { class: "fab-toc", "aria-label": "Mục lục" });
       let lastPart = null, i = 0;
       B.secs.forEach((x) => {
-        if (x.part !== lastPart) { lastPart = x.part; list.append(h("div", { class: "fab-part" }, x.part ? "Phần " + x.part + " · " + partName(x.part) : "")); }
+        if (x.part !== lastPart) { lastPart = x.part; list.append(h("div", { class: "fab-part" }, x.part ? PWk + x.part + " · " + partName(x.part) : "")); }
         list.append(h("button", { class: "fab-it" + (marks.has(x.key) ? " done" : "") + (x.key === store.get(nbLastKey(meta.id)) ? " last" : ""), style: "--d:" + Math.min(i++, 14) * 22 + "ms",
           onclick: () => { close(); openNote(x.key, null, meta.id); } },
           h("span", { class: "fab-no" }, x.no || "✎"), h("span", { class: "fab-t", html: x.title }), marks.has(x.key) ? h("span", { class: "fab-ok", "aria-label": "đã thuộc" }, "✓") : null));
@@ -990,15 +999,16 @@
       panel.innerHTML = "";
       panel.append(
         h("div", { class: "fab-ph" }, h("span", { class: "fab-ic sm", "aria-hidden": "true" }, "Σ"),
-          h("div", {}, h("b", {}, B.title), h("small", {}, "Đã thuộc " + done + "/" + learn.length + " mục · dùng cho mọi khối")),
+          h("div", {}, h("b", {}, B.title), h("small", {}, "Đã thuộc " + done + "/" + learn.length + (GBk ? " bài · ghi nhớ, ví dụ, video" : " mục · dùng cho mọi khối"))),
           h("button", { class: "fab-x", "aria-label": "Đóng mục lục", onclick: () => { close(); btn.focus(); } }, "×")),
+        tabs,
         h("div", { class: "fab-bar", "aria-hidden": "true" }, h("i", { style: "width:" + (learn.length ? Math.round((100 * done) / learn.length) : 0) + "%" })),
         list);
       KT.typeset(list);
       const first = list.querySelector(".fab-it.last") || list.querySelector(".fab-it:not(.done)") || list.querySelector(".fab-it");
       if (first) { first.scrollIntoView({ block: "center" }); first.focus({ preventScroll: true }); }
     }
-    btn.addEventListener("click", () => (panel.hidden ? open() : close()));
+    btn.addEventListener("click", () => { if (panel.hidden) { fabPick = null; open(); } else close(); });
   }
 
   /* ----- Luyện theo đề có sẵn (đề thật của các trường, sở: đúng câu, đúng thứ tự như đề gốc) ----- */
