@@ -959,30 +959,40 @@
   function nbFab() {
     if (!nbList.length) { if (fabEl) { fabEl.remove(); fabEl = null; } return; }
     if (fabEl && document.body.contains(fabEl)) return;
-    const btn = h("button", { class: "fab-btn", "aria-label": "Mục lục sổ tay kiến thức", "aria-expanded": "false", "aria-haspopup": "dialog" },
-      h("span", { class: "fab-ring", "aria-hidden": "true" }), h("span", { class: "fab-ic", "aria-hidden": "true" }, "Σ"), h("span", { class: "fab-lab" }, "Mục lục"));
-    const panel = h("div", { class: "fab-panel", role: "dialog", "aria-label": "Mục lục sổ tay", hidden: true });
+    const btn = h("button", { class: "fab-btn", "aria-label": "Ghi nhớ: sổ tay kiến thức", "aria-expanded": "false", "aria-haspopup": "dialog" },
+      h("span", { class: "fab-ring", "aria-hidden": "true" }), h("span", { class: "fab-ic", "aria-hidden": "true" }, "Σ"), h("span", { class: "fab-lab" }, "Ghi nhớ"));
+    const panel = h("div", { class: "fab-panel", role: "dialog", "aria-label": "Ghi nhớ", hidden: true });
     fabEl = h("div", { id: "nbFab", class: "fab" }, panel, btn);
     document.body.append(fabEl);
     const onDoc = (e) => { if (!fabEl.contains(e.target)) close(); };
     const onKey = (e) => { if (e.key === "Escape") { close(); btn.focus(); } };
     function close() { if (panel.hidden) return; panel.hidden = true; btn.setAttribute("aria-expanded", "false"); fabEl.classList.remove("open"); document.removeEventListener("pointerdown", onDoc); document.removeEventListener("keydown", onKey); }
-    let fabPick = null;
-    async function open(pick) {
-      // chọn sổ: sổ đang đọc → sổ của khối đang chọn → sổ chung
-      const onGrade = location.hash === "#notes" && /^v\d+$/.test(nbView) && nbGradeBook(+nbView.slice(1));
-      const meta = nbList.find((b) => b.id === pick) || nbList.find((b) => b.id === fabPick) || onGrade || (location.hash === "#notes" && nbView === "main" && nbMain()) || nbGradeBook(grade) || nbMain() || nbList[0];
-      fabPick = meta.id;
-      const GBk = nbIsGrade(meta.id), PWk = GBk ? "Chương " : "Phần ";
-      const order = [nbMain()].concat([6, 7, 8, 9, 10, 11, 12].map(nbGradeBook)).filter(Boolean);
-      const tabs = order.length > 1 ? h("div", { class: "fab-books", role: "tablist", "aria-label": "Chọn sổ tay" }, order.map((b) => h("button", { type: "button", role: "tab", class: "fab-book" + (b.id === meta.id ? " on" : ""), "aria-selected": String(b.id === meta.id),
-        onclick: (e) => { e.stopPropagation(); if (b.id !== meta.id) open(b.id); } }, nbIsGrade(b.id) ? "Toán " + nbGradeOf(b.id) : "Sổ chung"))) : null;
+    const showPanel = () => {
       panel.innerHTML = ""; panel.hidden = false; btn.setAttribute("aria-expanded", "true"); fabEl.classList.add("open");
       setTimeout(() => { document.addEventListener("pointerdown", onDoc); document.addEventListener("keydown", onKey); }, 0);
+    };
+    const xBtn = () => h("button", { class: "fab-x", "aria-label": "Đóng", onclick: () => { close(); btn.focus(); } }, "×");
+    // bước 1: chọn sổ (Chủ đề, Toán 6 … Toán 12)
+    function chooser() {
+      showPanel();
+      const items = [["main", "Chủ đề", "Σ", nbMain()]].concat([6, 7, 8, 9, 10, 11, 12].map((g) => [g, "Toán " + g, String(g), nbGradeBook(g)]));
+      const grid = h("div", { class: "fab-pick" }, items.map(([k, t, ic, b], i) => h("button", { type: "button", class: "fab-pb" + (b ? "" : " off") + (k === grade ? " mine" : ""), disabled: !b, style: "--d:" + i * 30 + "ms",
+        onclick: (e) => { e.stopPropagation(); open(b.id); } },
+        h("span", { class: "fab-pi", "aria-hidden": "true" }, ic), h("span", { class: "fab-pt" }, h("b", {}, t), h("small", {}, b ? (k === "main" ? "Kiến thức theo chủ đề" : b.n + " bài") + (b.done ? " · thuộc " + b.done : "") : "Đang cập nhật")))));
+      panel.append(h("div", { class: "fab-ph" }, h("span", { class: "fab-ic sm", "aria-hidden": "true" }, "Σ"),
+        h("div", {}, h("b", {}, "Ghi nhớ"), h("small", {}, "Chọn sổ để xem mục lục")), xBtn()), grid);
+      const f = grid.querySelector(".fab-pb.mine:not(.off)") || grid.querySelector(".fab-pb:not(.off)"); if (f) f.focus({ preventScroll: true });
+    }
+    // bước 2: mục lục của sổ đã chọn
+    async function open(pick) {
+      const meta = nbList.find((b) => b.id === pick);
+      if (!meta) return chooser();
+      const GBk = nbIsGrade(meta.id), PWk = GBk ? "Chương " : "Phần ";
+      const back = h("button", { type: "button", class: "fab-back", "aria-label": "Chọn sổ khác", onclick: (e) => { e.stopPropagation(); chooser(); } }, "‹");
+      showPanel();
       let B = nbCache[meta.id];
       if (!B || B.updated_at !== meta.updated_at) {
-        if (tabs) panel.append(tabs);
-        panel.append(h("p", { class: "fab-wait" }, "Đang mở mục lục…"));
+        panel.append(h("div", { class: "fab-ph" }, back, h("div", {}, h("b", {}, GBk ? "Toán " + nbGradeOf(meta.id) : "Chủ đề")), xBtn()), h("p", { class: "fab-wait" }, "Đang mở mục lục…"));
         try { B = await nbFetch(meta); }
         catch (e) { panel.innerHTML = ""; panel.append(h("p", { class: "fab-wait" }, "Chưa mở được mục lục. Em thử lại sau nhé.")); return; }
         if (panel.hidden) return;
@@ -1000,17 +1010,16 @@
       });
       panel.innerHTML = "";
       panel.append(
-        h("div", { class: "fab-ph" }, h("span", { class: "fab-ic sm", "aria-hidden": "true" }, "Σ"),
-          h("div", {}, h("b", {}, B.title), h("small", {}, "Đã thuộc " + done + "/" + learn.length + (GBk ? " bài · ghi nhớ, ví dụ, video" : " mục · dùng cho mọi khối"))),
-          h("button", { class: "fab-x", "aria-label": "Đóng mục lục", onclick: () => { close(); btn.focus(); } }, "×")),
-        tabs,
+        h("div", { class: "fab-ph" }, back,
+          h("div", {}, h("b", {}, GBk ? "Sổ tay Toán " + nbGradeOf(meta.id) : "Ghi nhớ theo chủ đề"), h("small", {}, "Đã thuộc " + done + "/" + learn.length + (GBk ? " bài · ghi nhớ, ví dụ, video" : " mục · dùng cho mọi khối"))),
+          xBtn()),
         h("div", { class: "fab-bar", "aria-hidden": "true" }, h("i", { style: "width:" + (learn.length ? Math.round((100 * done) / learn.length) : 0) + "%" })),
         list);
       KT.typeset(list);
       const first = list.querySelector(".fab-it.last") || list.querySelector(".fab-it:not(.done)") || list.querySelector(".fab-it");
       if (first) { first.scrollIntoView({ block: "center" }); first.focus({ preventScroll: true }); }
     }
-    btn.addEventListener("click", () => { if (panel.hidden) { fabPick = null; open(); } else close(); });
+    btn.addEventListener("click", () => { if (panel.hidden) chooser(); else close(); });
   }
 
   /* ----- Luyện theo đề có sẵn (đề thật của các trường, sở: đúng câu, đúng thứ tự như đề gốc) ----- */
