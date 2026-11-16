@@ -2505,3 +2505,4 @@ body.bd-teach .top{visibility:hidden}
 .fab-book{flex:none;border:1.5px solid var(--line-2);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:5px 12px;font-weight:700;font-size:13px;cursor:pointer}
 .fab-book.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
 .fab-book:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:600px){.nb-books{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}.nb-books::-webkit-scrollbar{display:none}.nb-book{flex:none}}

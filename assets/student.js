@@ -759,9 +759,11 @@
   var nbList = [], nbTick = [];
   let nbBook = null, nbFigs = {}, nbQ = "", nbKey = null, nbFocus = null, nbKeyBook = null;
   const nbCache = {};
-  // sổ theo khối: sotay10, sotay11, sotay12 (mỗi mục là một bài SGK); sổ chung: các sổ còn lại (vd sotay9)
-  const nbIsGrade = (id) => /^sotay1[0-2]$/.test(id || "");
-  const nbGradeBook = (g) => nbList.find((b) => b.id === "sotay" + g);
+  // sổ theo khối: sotay6, sotay7, sotay8, sotay9k (sotay9 đã là sổ chung), sotay10, sotay11, sotay12 – mỗi mục là một bài SGK
+  const NB_GID = (g) => (+g === 9 ? "sotay9k" : "sotay" + g);
+  const nbGradeOf = (id) => { const m = /^sotay(\d+)k?$/.exec(id || ""); const g = m ? +m[1] : 0; return g >= 6 && g <= 12 && NB_GID(g) === id ? g : 0; };
+  const nbIsGrade = (id) => nbGradeOf(id) > 0;
+  const nbGradeBook = (g) => nbList.find((b) => b.id === NB_GID(g));
   const nbMain = () => nbList.find((b) => !nbIsGrade(b.id));
   const nbLastKey = (id) => "kt_nb_last" + (nbIsGrade(id) ? "_" + id : "");
   async function nbFetch(meta) {
@@ -775,14 +777,14 @@
     const m = nbMain(); book = book || (m && m.id);
     if (book !== nbKeyBook) nbKey = null;
     nbKeyBook = book; nbKey = key || nbKey; nbFocus = box != null ? +box : null; nbQ = "";
-    nbView = nbIsGrade(book) ? "v" + book.slice(5) : "main"; store.set("kt_nb_view", nbView); go("notes");
+    nbView = nbIsGrade(book) ? "v" + nbGradeOf(book) : "main"; store.set("kt_nb_view", nbView); go("notes");
   }
   let nbView = store.get("kt_nb_view", "main");
   function openVid(g) { nbView = "v" + g; store.set("kt_nb_view", nbView); go("notes"); }
   async function viewNotes(w) {
     const mainB = nbMain();
     if (!mainB && nbView === "main") nbView = "v" + (grade >= 10 ? grade : 10);
-    const books = (mainB ? [["main", "📘 " + mainB.title]] : []).concat([10, 11, 12].map((g) => ["v" + g, nbGradeBook(g) ? "📗 Sổ tay Toán " + g : "🎬 Video Toán " + g]));
+    const books = (mainB ? [["main", "📘 " + mainB.title]] : []).concat([6, 7, 8, 9, 10, 11, 12].filter((g) => g >= 10 || nbGradeBook(g)).map((g) => ["v" + g, nbGradeBook(g) ? "📗 Toán " + g : "🎬 Video Toán " + g]));
     w.append(h("div", { class: "nb-books", role: "tablist", "aria-label": "Chọn sổ tay" }, books.map(([k, t]) => h("button", { type: "button", role: "tab", class: "nb-book" + (k === nbView ? " on" : ""), "aria-selected": String(k === nbView),
       onclick: () => { if (k === nbView) return; nbView = k; store.set("kt_nb_view", k); go("notes"); } }, t))));
     let meta = mainB;
@@ -801,7 +803,7 @@
   }
   function drawNotes(box) {
     const B = nbBook, marks = new Set(B.marks || []);
-    const GB = nbIsGrade(B.id), G = GB ? +B.id.slice(5) : 0, PW = GB ? "Chương " : "Phần ";
+    const GB = nbIsGrade(B.id), G = nbGradeOf(B.id), PW = GB ? "Chương " : "Phần ";
     const vidsOf = (x) => GB && x.no ? (vids || []).filter((v) => v.g === G && v.l === +x.no) : [];
     const secs = B.secs, learn = secs.filter((x) => x.no);
     if (!nbKey || !secs.some((x) => x.key === nbKey)) {
@@ -937,7 +939,7 @@
   /* ----- Dải kiến thức chạy ngang: các khung kiến thức của sổ tay, chạm để mở ----- */
   let tickPaused = false;
   function nbTicker() {
-    const items = nbTick.filter((t) => !nbIsGrade(t.book) || t.book === "sotay" + grade).slice(0, 36);
+    const items = nbTick.filter((t) => !nbIsGrade(t.book) || t.book === NB_GID(grade)).slice(0, 36);
     if (!items.length) return null;
     const chip = (t) => h("button", { class: "tk-chip" + (t.done ? " done" : ""), onclick: () => openNote(t.key, t.i, t.book), title: "Mở sổ tay: " + t.sec.replace(/<[^>]+>/g, "") },
       h("span", { class: "tk-no" }, t.no), h("span", { class: "tk-t" }, h("b", { html: t.box }), h("small", { html: t.sec })), t.done ? h("span", { class: "tk-ok", "aria-label": "đã thuộc" }, "✓") : null);
@@ -968,13 +970,13 @@
     let fabPick = null;
     async function open(pick) {
       // chọn sổ: sổ đang đọc → sổ của khối đang chọn → sổ chung
-      const onGrade = location.hash === "#notes" && /^v1[0-2]$/.test(nbView) && nbGradeBook(+nbView.slice(1));
+      const onGrade = location.hash === "#notes" && /^v\d+$/.test(nbView) && nbGradeBook(+nbView.slice(1));
       const meta = nbList.find((b) => b.id === pick) || nbList.find((b) => b.id === fabPick) || onGrade || (location.hash === "#notes" && nbView === "main" && nbMain()) || nbGradeBook(grade) || nbMain() || nbList[0];
       fabPick = meta.id;
       const GBk = nbIsGrade(meta.id), PWk = GBk ? "Chương " : "Phần ";
-      const order = [nbMain(), nbGradeBook(10), nbGradeBook(11), nbGradeBook(12)].filter(Boolean);
+      const order = [nbMain()].concat([6, 7, 8, 9, 10, 11, 12].map(nbGradeBook)).filter(Boolean);
       const tabs = order.length > 1 ? h("div", { class: "fab-books", role: "tablist", "aria-label": "Chọn sổ tay" }, order.map((b) => h("button", { type: "button", role: "tab", class: "fab-book" + (b.id === meta.id ? " on" : ""), "aria-selected": String(b.id === meta.id),
-        onclick: (e) => { e.stopPropagation(); if (b.id !== meta.id) open(b.id); } }, nbIsGrade(b.id) ? "Toán " + b.id.slice(5) : "Sổ chung"))) : null;
+        onclick: (e) => { e.stopPropagation(); if (b.id !== meta.id) open(b.id); } }, nbIsGrade(b.id) ? "Toán " + nbGradeOf(b.id) : "Sổ chung"))) : null;
       panel.innerHTML = ""; panel.hidden = false; btn.setAttribute("aria-expanded", "true"); fabEl.classList.add("open");
       setTimeout(() => { document.addEventListener("pointerdown", onDoc); document.addEventListener("keydown", onKey); }, 0);
       let B = nbCache[meta.id];
