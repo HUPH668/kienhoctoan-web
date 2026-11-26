@@ -316,14 +316,18 @@
     if (!classes.length) { el.append(h("div", { class: "empty", style: "margin-top:16px" }, "Tạo lớp và thêm học sinh ở tab Lớp & học sinh trước khi chấm phiếu.")); return; }
     if (!exams.length) {
       el.append(h("div", { class: "panel", style: "margin-top:16px" }, h("h3", {}, "Chưa có đề chấm phiếu"),
-        h("p", {}, "Đề xuất hiện ở đây khi thầy Hùng xuất đề kèm phiếu trả lời trên máy (kht.bat → mục E) và công cụ đồng bộ gửi file đáp án lên.")));
+        h("p", {}, "Đề và đề cương xuất hiện ở đây khi thầy Hùng xuất kèm phiếu trả lời trên máy (kht.bat → mục E: đề kiểm tra, mục F: đề cương theo ID) và công cụ đồng bộ gửi lên.")));
       return;
     }
     let exId = store.get("kt_t_omr", null); if (!exams.some((e) => e.id === exId)) exId = exams[0].id;
     let cls = ctx.curClass && classes.some((c) => c.id === ctx.curClass) ? ctx.curClass : classes[0].id;
-    const exSel = h("select", { id: "omrEx" }, exams.map((e) => h("option", { value: e.id, selected: e.id === exId }, e.title + (e.grade ? " · lớp " + e.grade : ""))));
+    const opt = (e) => h("option", { value: e.id, selected: e.id === exId }, e.title + (e.grade ? " · lớp " + e.grade : ""));
+    const dc = exams.filter((e) => e.kieu === "de_cuong"), kt = exams.filter((e) => e.kieu !== "de_cuong");
+    const exSel = h("select", { id: "omrEx" }, dc.length && kt.length
+      ? [h("optgroup", { label: "Đề cương" }, dc.map(opt)), h("optgroup", { label: "Đề kiểm tra" }, kt.map(opt))]
+      : exams.map(opt));
     const clSel = h("select", { id: "omrCl" }, classes.map((c) => h("option", { value: c.id, selected: c.id === cls }, c.name + " (" + c.n + " HS)")));
-    const info = h("p", { class: "sub omr-info" }), queue = h("div"), res = h("div");
+    const info = h("p", { class: "sub omr-info" }), docs = h("div", { class: "omr-docs" }), queue = h("div"), res = h("div");
     const file = h("input", { type: "file", accept: "image/*", multiple: true, class: "hidden", onchange: () => { if (file.files.length) upload(ctx, cur(), cls, [...file.files], queue, () => results(ctx, cur(), cls, res)); file.value = ""; } });
     const cur = () => exams.find((e) => e.id === exId);
     const showInfo = () => {
@@ -331,6 +335,35 @@
       if (c.mcq) parts.push("Phần I: " + c.mcq + " câu"); if (c.tf) parts.push("Phần II: " + c.tf + " câu"); if (c.short) parts.push("Phần III: " + c.short + " câu");
       if (e.essay != null && !e.thang_10) parts.push("Tự luận " + num(e.essay) + " điểm (nhập tay)");
       info.textContent = parts.join(" · ") + " · Mã đề: " + (e.made || []).join(", ") + (e.thang_10 ? " · Quy về thang 10" : "");
+      showDocs(e);
+    };
+    const showDocs = (e) => {
+      docs.innerHTML = "";
+      if (e.noi_dung) docs.append(h("p", { class: "omr-nd" }, h("b", {}, e.kieu === "de_cuong" ? "Nội dung đề cương: " : "Nội dung: "), e.noi_dung));
+      const files = e.files || [];
+      if (!files.length) {
+        docs.append(h("p", { class: "sub" }, "Chưa có file PDF để tải. File đề sẽ xuất hiện khi công cụ đồng bộ trên máy thầy Hùng gửi lên."));
+        return;
+      }
+      const label = (f) => f.kind === "de" ? "Đề mã " + f.made + " + phiếu" : f.kind === "phieu" ? "Phiếu trả lời" : f.kind === "dapan" ? "Đáp án" : f.kind === "loigiai" ? "Lời giải" : f.name;
+      const kb = (n) => n > 1048576 ? (Math.round(n / 104857.6) / 10).toString().replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+      docs.append(h("div", { class: "omr-files" }, h("span", { class: "omr-files-t" }, "Tải về để in:"),
+        files.map((f) => h("button", { class: "btn ghost sm omr-file" + (f.kind === "dapan" || f.kind === "loigiai" ? " gv" : ""), title: f.name + " · " + kb(f.size),
+          onclick: (ev) => download(e, f, ev.currentTarget) }, label(f)))),
+        h("p", { class: "sub" }, "Đáp án và lời giải chỉ dành cho giáo viên, không đưa cho học sinh trước khi làm bài."));
+    };
+    const download = async (e, f, btn) => {
+      const old = btn.textContent; btn.disabled = true; btn.textContent = "Đang tải…";
+      try {
+        const r = await T("t_omr_file", { p_exam: e.id, p_name: f.name });
+        if (!r || r.error) throw new Error((r && r.error) || "Không tải được file");
+        const bin = atob(r.b64), u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([u8], { type: "application/pdf" }));
+        const a = h("a", { href: url, download: f.name }); document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch (err) { fail(err); }
+      btn.disabled = false; btn.textContent = old;
     };
     exSel.onchange = () => { exId = exSel.value; store.set("kt_t_omr", exId); showInfo(); queue.innerHTML = ""; results(ctx, cur(), cls, res); };
     clSel.onchange = () => { cls = +clSel.value; ctx.setClass && ctx.setClass(cls); queue.innerHTML = ""; results(ctx, cur(), cls, res); };
@@ -338,7 +371,7 @@
       h("h3", {}, "Chấm phiếu trắc nghiệm giấy"),
       h("p", { class: "sub" }, "Học sinh tô số báo danh (6 số, xem ở tab Lớp & học sinh) và mã đề trên phiếu. Ảnh chỉ xử lí trên máy này; máy chủ chỉ nhận các ô đã tô để chấm."),
       h("div", { class: "form", style: "align-items:end" }, h("div", {}, h("label", { for: "omrEx" }, "Đề"), exSel), h("div", {}, h("label", { for: "omrCl" }, "Lớp"), clSel)),
-      info,
+      info, docs,
       h("div", { class: "omr-btns" },
         h("button", { class: "btn", onclick: () => camera(ctx, cur(), cls, () => results(ctx, cur(), cls, res)) }, "Quét bằng camera"),
         h("button", { class: "btn ghost", onclick: () => file.click() }, "Tải ảnh phiếu"), file)),
