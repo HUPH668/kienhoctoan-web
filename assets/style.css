@@ -2585,3 +2585,8 @@ body.bd-teach .top{visibility:hidden}
 .omr-bv{text-align:right;font-variant-numeric:tabular-nums}
 .omr-bid{grid-column:2/4;font-size:11px;margin-top:-4px;color:var(--ink-3)}
 @media (max-width:760px){.omr-edit{grid-template-columns:1fr}.omr-top b{flex-basis:100%}}
+
+/* ---------- trung tâm ---------- */
+.dh-cen{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px;font-size:13px;font-weight:600;letter-spacing:.01em;color:rgba(255,255,255,.82)}
+.dh-cen select{padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.14);color:#fff;font-weight:700;font-size:13px}
+.dh-cen select option{color:#1b1934}

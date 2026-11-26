@@ -480,23 +480,41 @@
         B.teacher ? h("b", {}, B.teacher) : null,
         B.phone ? h("a", { class: "bp-call", href: "tel:" + B.phone, html: KT.PHONE_SVG + "<span>" + KT.phoneFmt(B.phone) + "</span>" }) : null) : null);
   };
-  (() => {
-    const B = KT.BRAND;
+  // thương hiệu theo trung tâm: KIẾN HỌC TOÁN (id 1) giữ thông tin trong config.js; trung tâm khác dùng tên + SĐT của trung tâm
+  const BRAND0 = Object.assign({}, KT.BRAND);
+  KT.applyBrand = () => {
+    const B = KT.BRAND, other = B.center && B.center.id && B.center.id !== 1;
+    const lt = document.querySelector(".logo .t");
+    if (lt) { lt.innerHTML = ""; lt.append(h("b", {}, B.name), h("small", {}, other ? "Học cùng Kiến Học Toán" : (B.teacher || ""))); }
+    const lg = document.querySelector(".logo"); if (lg) lg.setAttribute("aria-label", B.name + " – về trang chủ");
     const hp = document.getElementById("hPhone");
-    if (hp && B.phone) { hp.href = "tel:" + B.phone; hp.innerHTML = KT.PHONE_SVG + "<span>" + KT.phoneFmt(B.phone) + "</span>"; hp.title = "Gọi " + (B.teacher || "") ; hp.hidden = false; }
+    if (hp) {
+      if (B.phone) { hp.href = "tel:" + B.phone; hp.innerHTML = KT.PHONE_SVG + "<span>" + KT.phoneFmt(B.phone) + "</span>"; hp.title = "Gọi " + (B.teacher || B.name); hp.hidden = false; }
+      else hp.hidden = true;
+    }
     const ft = document.getElementById("siteFoot");
-    if (ft) ft.append(h("div", { class: "wrap f-grid" },
-      h("div", { class: "f-col f-about" },
-        h("div", { class: "f-brand" }, h("span", { class: "mark sm", html: KT.MARK_SVG }), h("b", {}, B.name)),
-        h("p", {}, "Luyện và kiểm tra Toán từ lớp 6 đến lớp 12, thi tốt nghiệp THPT và đánh giá năng lực. Làm xong biết ngay mình vững phần nào, yếu phần nào.")),
-      h("nav", { class: "f-col", "aria-label": "Trang" }, h("b", { class: "f-h" }, "Vào học"),
-        h("a", { href: "./" }, "Trang học sinh"), h("a", { href: "giaovien.html" }, "Trang giáo viên")),
-      h("div", { class: "f-col" }, h("b", { class: "f-h" }, "Liên hệ"),
-        B.teacher ? h("span", {}, B.teacher) : null,
-        B.phone ? h("a", { href: "tel:" + B.phone }, "Gọi " + KT.phoneFmt(B.phone)) : null,
-        B.phone ? h("a", { href: "https://zalo.me/" + B.phone, target: "_blank", rel: "noopener" }, "Nhắn Zalo") : null)),
-      h("div", { class: "wrap f-bottom" }, h("span", {}, "© " + new Date().getFullYear() + " " + B.name), h("span", {}, "Kiến tha lâu cũng đầy tổ.")));
-  })();
+    if (ft) {
+      ft.innerHTML = "";
+      ft.append(h("div", { class: "wrap f-grid" },
+        h("div", { class: "f-col f-about" },
+          h("div", { class: "f-brand" }, h("span", { class: "mark sm", html: KT.MARK_SVG }), h("b", {}, B.name)),
+          h("p", {}, "Luyện và kiểm tra Toán từ lớp 6 đến lớp 12, thi tốt nghiệp THPT và đánh giá năng lực. Làm xong biết ngay mình vững phần nào, yếu phần nào.")),
+        h("nav", { class: "f-col", "aria-label": "Trang" }, h("b", { class: "f-h" }, "Vào học"),
+          h("a", { href: "./" }, "Trang học sinh"), h("a", { href: "giaovien.html" }, "Trang giáo viên")),
+        h("div", { class: "f-col" }, h("b", { class: "f-h" }, "Liên hệ"),
+          B.teacher ? h("span", {}, B.teacher) : other ? h("span", {}, B.name) : null,
+          B.center && B.center.address ? h("span", {}, B.center.address) : null,
+          B.phone ? h("a", { href: "tel:" + B.phone }, "Gọi " + KT.phoneFmt(B.phone)) : null,
+          B.phone ? h("a", { href: "https://zalo.me/" + B.phone, target: "_blank", rel: "noopener" }, "Nhắn Zalo") : null)),
+        h("div", { class: "wrap f-bottom" }, h("span", {}, "© " + new Date().getFullYear() + " " + B.name + (other ? " · nền tảng Kiến Học Toán" : "")), h("span", {}, "Kiến tha lâu cũng đầy tổ.")));
+    }
+  };
+  KT.setCenter = (c) => {
+    if (!c || !c.id || +c.id === 1) Object.assign(KT.BRAND, BRAND0, { center: c && c.id ? c : null });
+    else Object.assign(KT.BRAND, { name: c.name, teacher: "", phone: String(c.phone || "").replace(/\D/g, ""), center: c });
+    KT.applyBrand();
+  };
+  KT.applyBrand();
   /* ---------------- thăng cấp ---------------- */
   KT.TITLES = [[1, "Kiến Tập Sự"], [3, "Kiến Chăm Chỉ"], [5, "Kiến Thợ"], [8, "Kiến Lính"], [11, "Kiến Trinh Sát"],
     [15, "Kiến Đội Trưởng"], [20, "Kiến Tướng"], [25, "Kiến Chúa"], [30, "Huyền Thoại Kiến Học"]];

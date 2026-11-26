@@ -6,7 +6,8 @@
   const who = document.getElementById("who");
   KT.initTheme(document.getElementById("themeBtn"));
 
-  let sess = store.get("kt_stu", null);       // {token,name,code,class}
+  let sess = store.get("kt_stu", null);       // {token,name,code,class,center}
+  if (sess && sess.center) KT.setCenter(sess.center);
   let vids = null;
   const loadVids = () => vids ? Promise.resolve(vids) : api.rpc("videos_list", {}).then((v) => (vids = v || [])).catch(() => (vids = []));
   // chỗ đặt nút video (điền sau khi tải danh sách video)
@@ -24,7 +25,7 @@
   }
   function logout(expired) {
     if (sess) api.rpc("student_logout", { p_token: sess.token }).catch(() => { });
-    sess = null; gateOk = false; store.del("kt_stu"); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
+    sess = null; gateOk = false; store.del("kt_stu"); KT.setCenter(null); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
   function stopTimers() { stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
@@ -151,7 +152,7 @@
       e.preventDefault(); btn.disabled = true; err.classList.add("hidden");
       try {
         const d = await api.rpc("student_login", { p_code: code.value, p_pin: pin.value });
-        sess = d; store.set("kt_stu", d); renderHome();
+        sess = d; store.set("kt_stu", d); KT.setCenter(d.center); renderHome();
       } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); }
       btn.disabled = false;
     } },
@@ -179,11 +180,17 @@
     const B = KT.BRAND;
     const back = h("p", { class: "reg-link" }, "Đã có tài khoản? ", h("button", { type: "button", class: "linkbtn", onclick: () => renderLogin() }, "Đăng nhập"));
     const shell = (inner) => { app.innerHTML = ""; app.append(h("section", { class: "wrap center" }, h("div", { class: "auth" }, KT.brandPanel("student"), inner))); };
-    let info;
-    try { info = await api.rpc("register_info", {}); } catch (e) { info = { open: false, classes: [], err: e.message }; }
+    let info, cen = store.get("kt_reg_center", null);
+    try { info = await api.rpc("register_info", { p_center: cen }); } catch (e) { info = { open: false, classes: [], centers: [], err: e.message }; }
+    const cens = info.centers || [];
+    // nhiều trung tâm: em chọn trung tâm mình học trước
+    const cenSel = cens.length > 1 ? h("select", { id: "rCenter", onchange: () => { store.set("kt_reg_center", +cenSel.value); renderRegister(); } },
+      cens.map((c) => h("option", { value: c.id, selected: +c.id === +info.center }, c.name))) : null;
+    const cenBox = cenSel ? h("div", {}, h("label", { for: "rCenter" }, "Trung tâm em học"), cenSel) : null;
+    const cenName = (cens.find((c) => +c.id === +info.center) || {}).name;
     if (!info.open) {
-      shell(h("div", { class: "login panel" }, h("h1", {}, "Đăng ký tài khoản"),
-        h("p", { class: "sub" }, info.err || "Hiện thầy chưa mở đăng ký tài khoản mới."),
+      shell(h("div", { class: "login panel" }, h("h1", {}, "Đăng ký tài khoản"), cenBox,
+        h("p", { class: "sub" }, info.err || ((cenName && cens.length > 1 ? cenName + " hiện" : "Hiện thầy") + " chưa mở đăng ký tài khoản mới.")),
         B.phone ? h("p", {}, "Em liên hệ ", h("b", {}, B.teacher || "thầy"), " qua số ", h("a", { href: "tel:" + B.phone }, KT.phoneFmt(B.phone)), " để được cấp tài khoản.") : null, back));
       return;
     }
@@ -206,7 +213,7 @@
       if (pin.value !== pin2.value) return bad("Hai lần nhập mã PIN chưa giống nhau.");
       btn.disabled = true;
       try {
-        const r = await api.rpc("student_register", { p_name: name.value, p_class: cls.value === "none" ? null : +cls.value, p_pin: pin.value, p_phone: phone.value || null, p_note: note.value || null });
+        const r = await api.rpc("student_register", { p_center: +info.center || null, p_name: name.value, p_class: cls.value === "none" ? null : +cls.value, p_pin: pin.value, p_phone: phone.value || null, p_note: note.value || null });
         store.set("kt_reg_code", r.code);
         shell(h("div", { class: "login panel regdone" },
           h("h1", {}, "Đã gửi đăng ký!"),
@@ -219,6 +226,7 @@
     } },
       h("h1", {}, "Đăng ký tài khoản"),
       h("p", { class: "sub" }, "Điền thông tin bên dưới. Tài khoản dùng được sau khi thầy duyệt."),
+      cenBox,
       h("label", { for: "rName" }, "Họ và tên"), name,
       h("label", { for: "rClass" }, "Lớp"), cls,
       h("div", { class: "two" }, h("div", {}, h("label", { for: "rPin" }, "Tự đặt mã PIN"), pin), h("div", {}, h("label", { for: "rPin2" }, "Nhập lại mã PIN"), pin2)),
@@ -278,6 +286,7 @@
           rpc("nb_list").then((l) => (nbList = l || [])).catch(() => (nbList = [])),
           rpc("nb_ticker").then((l) => (nbTick = l || [])).catch(() => (nbTick = []))]);
         clockSkew = new Date(home.server_now).getTime() - Date.now();
+        if (home.center && (!sess.center || sess.center.id !== home.center.id || sess.center.phone !== home.center.phone || sess.center.name !== home.center.name)) { sess.center = home.center; store.set("kt_stu", sess); KT.setCenter(home.center); }
         if (grade == null || !CUR[grade]) grade = KT.guessGrade(home.student.class) || (CUR[10] ? 10 : KT.GRADES[0]);
         homeAt = Date.now(); liveProm = rpc("live_list").catch(() => []);
       } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap view empty-state" }, h("h2", {}, "Không tải được dữ liệu"), h("p", {}, "Kiểm tra kết nối mạng rồi thử lại."), h("button", { class: "btn", onclick: () => renderHome(view) }, "Thử lại"))); return; }
