@@ -144,7 +144,7 @@
   /* ---------------- đăng nhập ---------------- */
   function renderLogin(msg) {
     cur = null; setWho(); app.innerHTML = "";
-    const code = h("input", { id: "code", autocomplete: "username", placeholder: "VD: 12A1-07", autocapitalize: "characters", required: true });
+    const code = h("input", { id: "code", autocomplete: "username", placeholder: "VD: 000012", autocapitalize: "characters", inputmode: "numeric", required: true });
     const pin = h("input", { id: "pin", type: "password", inputmode: "numeric", autocomplete: "current-password", placeholder: "6 chữ số", required: true });
     const err = h("div", { class: "note bad" + (msg ? "" : " hidden") }, msg || "");
     const btn = h("button", { class: "btn", type: "submit" }, "Đăng nhập");
@@ -153,6 +153,9 @@
       try {
         const d = await api.rpc("student_login", { p_code: code.value, p_pin: pin.value });
         sess = d; store.set("kt_stu", d); KT.setCenter(d.center); renderHome();
+        if (d.new_code) { store.set("kt_reg_code", d.new_code); let cl; cl = KT.modal([h("h3", {}, "Em đã có số báo danh mới"), h("p", {}, "Từ nay em đăng nhập bằng số báo danh dưới đây và mã PIN cũ. Số này cũng là số báo danh em tô trên phiếu trả lời trắc nghiệm."),
+          h("p", { class: "mono", style: "font-size:30px;font-weight:800;letter-spacing:.12em;text-align:center;margin:10px 0" }, d.new_code),
+          h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => cl() }, "Em đã ghi lại"))]); }
       } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); }
       btn.disabled = false;
     } },
@@ -160,8 +163,8 @@
       h("div", { class: "roles", role: "tablist", "aria-label": "Chọn vai trò" },
         h("button", { type: "button", class: "on", role: "tab", "aria-selected": "true" }, "Học sinh"),
         h("a", { href: "giaovien.html", role: "tab", "aria-selected": "false" }, "Giáo viên")),
-      h("p", { class: "sub" }, "Nhập mã học sinh và mã PIN giáo viên phát cho em."),
-      h("label", { for: "code" }, "Mã học sinh"), code, h("label", { for: "pin" }, "Mã PIN"), pin, err, btn,
+      h("p", { class: "sub" }, "Nhập số báo danh (6 chữ số) và mã PIN thầy cô phát cho em."),
+      h("label", { for: "code" }, "Số báo danh"), code, h("label", { for: "pin" }, "Mã PIN"), pin, err, btn,
       h("p", { class: "reg-link" }, "Chưa có tài khoản? ", h("button", { type: "button", class: "linkbtn", onclick: () => renderRegister() }, "Đăng ký")));
     const saved = store.get("kt_reg_code", null); if (saved && !code.value) code.value = saved;
     const fame = h("div", { class: "fame-public hidden" });
@@ -217,7 +220,7 @@
         store.set("kt_reg_code", r.code);
         shell(h("div", { class: "login panel regdone" },
           h("h1", {}, "Đã gửi đăng ký!"),
-          h("p", { class: "sub" }, "Mã học sinh của em là"),
+          h("p", { class: "sub" }, "Số báo danh (mã đăng nhập) của em là"),
           h("div", { class: "regcode" }, r.code),
           h("p", {}, "Em ghi lại mã này. Khi ", B.teacher || "thầy", " duyệt xong, em đăng nhập bằng mã này và mã PIN em vừa đặt."),
           B.phone ? h("p", { class: "sub" }, "Muốn được duyệt nhanh, em nhắn ", B.teacher || "thầy", " qua số ", h("a", { href: "tel:" + B.phone }, KT.phoneFmt(B.phone)), ".") : null,
