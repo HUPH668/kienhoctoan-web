@@ -2523,3 +2523,65 @@ body.bd-teach .top{visibility:hidden}
 .fab-back:focus-visible{outline:2px solid var(--brand)}
 @keyframes fabIn{from{opacity:0;transform:translateY(6px)}}
 @media (prefers-reduced-motion:reduce){.fab-pb{animation:none}}
+
+/* ---------- chấm phiếu giấy ---------- */
+.omr-info{margin:8px 0 0}
+.omr-btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.omr-qhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.omr-qhead h3{margin:0}
+.omr-queue{margin-top:14px;overflow:auto}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.omr-cam{position:fixed;inset:0;z-index:200;background:#000;color:#fff;display:flex;flex-direction:column}
+.omr-top{display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(0,0,0,.7);flex-wrap:wrap}
+.omr-top b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.omr-top .chk{color:#ddd;font-size:14px;display:flex;align-items:center;gap:6px}
+.omr-count{font-size:14px;color:#9fe0b8}
+.omr-view{position:relative;flex:1;min-height:0;overflow:hidden}
+.omr-view video{width:100%;height:100%;object-fit:contain;display:block}
+.omr-ovl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.omr-guide{position:absolute;inset:6% 12%;border:2px dashed rgba(255,255,255,.35);border-radius:10px;pointer-events:none}
+.omr-status{padding:10px 14px;text-align:center;font-weight:600;background:rgba(0,0,0,.75)}
+.omr-status.ok{color:#9fe0b8}.omr-status.bad{color:#ffb4ab}
+.omr-card{margin:0 10px 10px;padding:12px 14px;border-radius:12px;background:#fff;color:#1b1b1f;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.omr-card.ok{background:#e1f3e8;color:#0f5132}.omr-card.bad{background:#fbe5e4;color:#8c1d18}.omr-card.warn{background:#fdf0d8;color:#5c3b00}
+.omr-card .sub{color:inherit;opacity:.85;font-size:13px}
+.omr-acts{display:flex;gap:8px}
+.omr-edit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}
+.omr-edit.noimg{grid-template-columns:1fr}
+.omr-img canvas{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;display:block}
+.omr-img .dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid;margin:0 4px 0 2px;vertical-align:-1px}
+.omr-img .dot.blue{border-color:#1565c0}.omr-img .dot.orange{border-color:#e65100}
+.omr-id{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))!important}
+.omr-score{margin:10px 0}
+.omr-who{display:flex;flex-direction:column}
+.omr-who span{color:var(--ink-3);font-size:13px}
+.omr-pts{display:flex;align-items:baseline;gap:10px;margin-top:4px}
+.omr-pts .big{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.omr-part h4{margin:12px 0 6px;font-size:14px}
+.omr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px}
+.omr-grid.tf{grid-template-columns:1fr}
+.omr-grid.sh{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+.omr-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.omr-q{display:inline-grid;place-items:center;min-width:26px;height:24px;border-radius:6px;font-size:12px;background:var(--surface-2);border:1px solid var(--line)}
+.omr-q.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.omr-q.no{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.omr-q.half{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.omr-tg{display:inline-flex;border:1px solid var(--line-2);border-radius:7px;overflow:hidden}
+.omr-tg.doubt{outline:2px solid #e65100;outline-offset:1px}
+.omr-tg button{border:0;background:var(--surface);color:var(--ink-2);min-width:28px;height:28px;font-weight:700;font-size:13px;cursor:pointer}
+.omr-tg button+button{border-left:1px solid var(--line)}
+.omr-tg button.on{background:var(--brand);color:#fff}
+.omr-y{display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:13px}
+.omr-row input{width:70px;padding:5px 7px;border:1.5px solid var(--line-2);border-radius:7px;background:var(--surface-2)}
+.omr-row input.doubt{border-color:#e65100}
+.omr-tlin{width:64px;padding:5px 7px;border:1.5px solid var(--line-2);border-radius:7px;background:var(--surface-2)}
+.omr-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.omr-stat h4{margin:6px 0}
+.omr-bar{display:grid;grid-template-columns:56px 1fr 40px;gap:8px;align-items:center;font-size:13px;padding:2px 0}
+.omr-bq{font-weight:600;white-space:nowrap}
+.omr-bt{height:8px;border-radius:9px;background:var(--line);overflow:hidden}
+.omr-bt i{display:block;height:100%;background:var(--ok)}
+.omr-bar.low .omr-bt i{background:var(--bad)}
+.omr-bv{text-align:right;font-variant-numeric:tabular-nums}
+.omr-bid{grid-column:2/4;font-size:11px;margin-top:-4px;color:var(--ink-3)}
+@media (max-width:760px){.omr-edit{grid-template-columns:1fr}.omr-top b{flex-basis:100%}}

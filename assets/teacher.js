@@ -104,7 +104,7 @@
     const w = h("section", { class: "wrap" });
     const admin = !!(ov.me && ov.me.role === "admin");
     const badge = (t, n) => (n ? h("span", {}, t + " ", h("span", { class: "tabbadge" }, String(n))) : t);
-    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["classes", badge("Lớp & học sinh", ov.n_pending)], ["credits", "Điểm làm bài"],
+    const tabs = [["monitor", "Theo dõi & báo cáo"], ["stats", "Thống kê"], ["assign", "Giao đề"], ["omr", "Chấm phiếu"], ["classes", badge("Lớp & học sinh", ov.n_pending)], ["credits", "Điểm làm bài"],
       admin && ["reports", badge("Câu bị báo lỗi", ov.n_reports)], ["live", h("span", {}, h("i", { class: "lv-dot" }), "Lớp học live")], ["board", "Bảng phụ"], ["fees", "Học phí"], ["gate", "Video đầu giờ"],
       admin && ["videos", "Video ôn tập"], admin && ["bank", "Ngân hàng câu hỏi"], admin && ["teachers", badge("Giáo viên", ov.n_tpending)]].filter(Boolean);
     if (!tabs.some(([k]) => k === tab)) tab = "monitor";
@@ -112,7 +112,13 @@
     w.append(h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, lab]) => h("button", { class: tab === k ? "on" : "", role: "tab", "aria-selected": String(tab === k),
       onclick: () => { tab = k; store.set("kt_t_tab", k); curAsg = null; liveCur = null; bdCur = null; tvOn = false; render(); } }, lab))));
     const body = h("div", {}); w.append(body); app.append(w);
-    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, board: tabBoard, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+    ({ monitor: tabMonitor, stats: tabStats, assign: tabAssign, omr: tabOmr, classes: tabClasses, credits: tabCredits, reports: tabReports, live: tabLive, board: tabBoard, gate: tabGate, fees: tabFees, videos: tabVideos, bank: tabBank, teachers: tabTeachers })[tab](body);
+  }
+
+  // chấm phiếu trắc nghiệm giấy (assets/omr.js + omr-ui.js)
+  function tabOmr(el) {
+    if (!KT.omrTab || !window.OMR) { el.append(h("div", { class: "note bad" }, "Chưa tải được bộ đọc phiếu. Tải lại trang.")); return; }
+    KT.omrTab(el, { T, ov, curClass, fail, download, setClass: (c) => { curClass = c; store.set("kt_t_class", c); } });
   }
 
   // dải tổng quan đầu trang: lời chào + 4 con số chính của các lớp mình phụ trách
@@ -1659,7 +1665,7 @@
     if (!sts.length) { box.append(h("div", { class: "empty" }, "Lớp chưa có học sinh.")); return; }
     box.append(h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 10px" },
       h("button", { class: "btn sm", onclick: () => printCards(cname, sts) }, "In phiếu đăng nhập"),
-      h("button", { class: "btn ghost sm", onclick: () => download("DanhSach_" + cname + ".csv", [["Mã HS", "Họ tên", "PIN"]].concat(sts.map((s) => [s.code, s.name, "'" + s.pin]))) }, "Xuất danh sách (Excel)")));
+      h("button", { class: "btn ghost sm", onclick: () => download("DanhSach_" + cname + ".csv", [["Mã HS", "Số báo danh", "Họ tên", "PIN"]].concat(sts.map((s) => [s.code, "'" + (s.sbd || ""), s.name, "'" + s.pin]))) }, "Xuất danh sách (Excel)")));
     // chuyển lớp (một em hoặc nhiều em đã tích chọn)
     const picked = new Set();
     const others = ov.classes.filter((c) => c.id !== curClass);
@@ -1684,11 +1690,11 @@
     const syncBulk = () => { bulkBtn.disabled = !picked.size; bulkBtn.textContent = picked.size ? "Chuyển lớp " + picked.size + " em đã chọn" : "Chuyển lớp các em đã chọn"; };
     const allCb = h("input", { type: "checkbox", "aria-label": "Chọn tất cả", onchange: () => { tbody.querySelectorAll("input.pick").forEach((cb) => { cb.checked = allCb.checked; cb.dispatchEvent(new Event("change")); }); } });
     box.lastChild.append(bulkBtn);
-    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, allCb), ["Mã HS", "Họ tên", "Cấp", "PIN", "Trạng thái", ""].map((x) => h("th", {}, x)))));
+    const tb = h("table", { class: "tbl" }, h("thead", {}, h("tr", {}, h("th", {}, allCb), ["Mã HS", "SBD", "Họ tên", "Cấp", "PIN", "Trạng thái", ""].map((x) => h("th", {}, x)))));
     const tbody = h("tbody");
     const act = async (s, args, msg) => { try { await T("t_student_update", Object.assign({ p_id: s.id }, args)); if (msg) KT.toast(msg, "ok"); render(); } catch (e) { fail(e); } };
     sts.forEach((s) => tbody.append(h("tr", {}, h("td", {}, h("input", { type: "checkbox", class: "pick", "aria-label": "Chọn " + s.name, onchange: (e) => { (e.target.checked ? picked.add(s.id) : picked.delete(s.id)); syncBulk(); }, "data-id": s.id })),
-      h("td", { class: "mono" }, s.code), h("td", {}, s.name),
+      h("td", { class: "mono" }, s.code), h("td", { class: "mono", title: "Số báo danh tô trên phiếu trả lời giấy" }, s.sbd || ""), h("td", {}, s.name),
       h("td", {}, h("span", { class: "lvcell" }, KT.levelBadge(KT.lvOf(s.xp), "xs"), KT.titleOf(KT.lvOf(s.xp)) + " · " + KT.num(s.xp) + " KN", s.hide_rank ? h("span", { class: "pill", title: "Không hiện trên bảng vinh danh" }, "Ẩn") : null)),
       h("td", { class: "mono" }, s.pin),
       h("td", {}, s.failed >= 10 ? h("span", { class: "pill bad" }, "Bị khoá") : !s.active ? h("span", { class: "pill" }, "Ngừng") : h("span", { class: "pill ok" }, "Hoạt động")),
@@ -1707,7 +1713,7 @@
     const wnd = window.open("", "_blank");
     if (!wnd) return KT.toast("Trình duyệt chặn cửa sổ in. Cho phép pop-up rồi thử lại.", "bad");
     wnd.document.write('<!doctype html><meta charset="utf-8"><title>Phiếu đăng nhập ' + esc(cname) + '</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:16px;color:#000}h2{margin:0 0 10px}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.c{border:1px dashed #888;border-radius:8px;padding:10px;font-size:13px;break-inside:avoid}.c b{font-size:15px}.k{font-family:Consolas,monospace;font-size:16px}</style>' +
-      "<h2>" + esc(KT.BRAND.name) + " – Phiếu đăng nhập lớp " + esc(cname) + "</h2><p style=\"margin:-4px 0 12px\">" + esc(KT.BRAND.teacher) + (KT.BRAND.phone ? " – ĐT " + esc(KT.phoneFmt(KT.BRAND.phone)) : "") + "</p><div class=g>" + sts.map((s) => '<div class=c><b>' + esc(s.name) + '</b><br>Trang web: ' + esc(url) + '<br>Mã HS: <span class=k>' + esc(s.code) + '</span><br>PIN: <span class=k>' + esc(s.pin) + "</span></div>").join("") + "</div><script>print()<\/script>");
+      "<h2>" + esc(KT.BRAND.name) + " – Phiếu đăng nhập lớp " + esc(cname) + "</h2><p style=\"margin:-4px 0 12px\">" + esc(KT.BRAND.teacher) + (KT.BRAND.phone ? " – ĐT " + esc(KT.phoneFmt(KT.BRAND.phone)) : "") + "</p><div class=g>" + sts.map((s) => '<div class=c><b>' + esc(s.name) + '</b><br>Trang web: ' + esc(url) + '<br>Mã HS: <span class=k>' + esc(s.code) + '</span><br>PIN: <span class=k>' + esc(s.pin) + "</span>" + (s.sbd ? "<br>Số báo danh (tô trên phiếu): <span class=k>" + esc(s.sbd) + "</span>" : "") + "</div>").join("") + "</div><script>print()<\/script>");
     wnd.document.close();
   }
 
