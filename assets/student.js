@@ -28,7 +28,8 @@
     sess = null; gateOk = false; store.del("kt_stu"); KT.setCenter(null); stopTimers(); if (window.KHCalc) window.KHCalc.close(); renderLogin(expired ? "Phiên đăng nhập đã hết, em đăng nhập lại nhé." : "");
   }
   let beatId = null, examEnd = 0;
-  function stopTimers() { stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
+  let mustTimer = null;
+  function stopTimers() { clearInterval(mustTimer); mustTimer = null; stopLive(); clearInterval(timerId); timerId = null; clearTimeout(saveTimer); clearInterval(beatId); beatId = null; guardOff(); }
 
   /* ---------------- chống gian lận: ghi lại việc rời trang, chặn sao chép đề ---------------- */
   let guardOff = () => { };
@@ -98,7 +99,7 @@
     who.innerHTML = "";
     document.querySelector(".top").classList.toggle("has-umenu", !!sess);
     if (!sess) return;
-    const inExam = cur && cur.status === "doing";
+    const realExam = cur && cur.status === "doing", inExam = realExam || locked();
     const I = home ? KT.levelInfo(home.xp) : null;
     const name = (home && home.student.name) || sess.name, cls = (home && home.student.class) || sess.class;
     const ini = String(name || "?").trim().split(/\s+/).slice(-1)[0].charAt(0).toUpperCase();
@@ -126,7 +127,7 @@
     if (window.KHCalc) who.append(window.KHCalc.button());
     const av = h("button", { type: "button", class: "avbtn", "aria-label": "Tài khoản của " + name, "aria-expanded": "false", "aria-haspopup": "true" },
       h("span", { class: "av pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("span", { class: "av-n" }, h("b", {}, name), h("small", {}, I ? "Cấp " + I.L + ", " + I.title : cls ? "Lớp " + cls : sess.code)), svg("chev", "chev"));
-    const out = () => { if (inExam) KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); };
+    const out = () => { if (realExam) KT.confirm("Đăng xuất?", "Bài đang làm đã được lưu trên máy chủ, đăng nhập lại để làm tiếp.", "Đăng xuất", () => logout()); else logout(); };
     const mi = (ic, t, fn) => h("button", { type: "button", class: "dd-i", role: "menuitem", onclick: fn }, svg(ic), h("span", { class: "dd-t" }, h("b", {}, t)));
     const um = h("div", { class: "dd dd-user", role: "menu" },
       h("div", { class: "dd-prof" }, h("span", { class: "av lg pt" + (I ? KT.tierOf(I.L) : 0) }, ini), h("div", {}, h("b", {}, name), h("small", {}, (cls ? "Lớp " + cls + ", mã " : "Mã ") + sess.code), I ? h("small", {}, "Cấp " + I.L + ", " + I.title + ", " + KT.num(I.xp) + " KN") : null)),
@@ -251,7 +252,7 @@
     achieve: '<path d="M8 3.5h8V9a4 4 0 0 1-8 0z"/><path d="M16 5h3.5v1.5A3.5 3.5 0 0 1 16 10M8 5H4.5v1.5A3.5 3.5 0 0 0 8 10"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     game: '<path d="M12 20c-3.6 0-6.5-2-6.5-4.6 0-2.2 2.4-4.4 6.5-4.4s6.5 2.2 6.5 4.4C18.5 18 15.6 20 12 20z"/><circle cx="6" cy="8.5" r="2"/><circle cx="18" cy="8.5" r="2"/><circle cx="9.5" cy="5" r="2"/><circle cx="14.5" cy="5" r="2"/>',
     bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
-    chev: '<path d="m7 10 5 5 5-5"/>', out: '<path d="M14 4h4.5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16.5 5.5 12 10 7.5M5.5 12H15"/>',
+    chev: '<path d="m7 10 5 5 5-5"/>', lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>', out: '<path d="M14 4h4.5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16.5 5.5 12 10 7.5M5.5 12H15"/>',
     calc: '<rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8 6h8v3H8z"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/>',
     moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   };
@@ -263,19 +264,28 @@
   document.body.append(bnav);
   // đang làm bài thì hỏi trước khi rời trang
   const leave = (fn) => { if (cur && cur.status === "doing") KT.confirm("Rời bài đang làm?", "Bài làm được lưu trên máy chủ, em có thể quay lại làm tiếp (đồng hồ vẫn chạy).", "Rời bài", () => { flush(); fn(); }); else fn(); };
-  const go = (k) => leave(() => renderHome(k, { cache: true }));
+  // bài kiểm tra được giao đang mở mà em chưa làm xong: phải làm xong mới dùng được các mục khác
+  const mustList = () => (home ? (home.assignments || []).filter((a) => ["todo", "doing", "rem"].includes(tStatus(a)))
+    .sort((a, b) => (b.doing ? 1 : 0) - (a.doing ? 1 : 0) || new Date(a.closes_at) - new Date(b.closes_at)) : []);
+  const locked = () => !!sess && !(cur && cur.status === "doing") && mustList().length > 0;
+  const lockedMsg = () => { KT.toast("Em làm xong bài kiểm tra được giao trước, rồi các mục khác sẽ mở.", "bad"); const c = document.querySelector(".must-hero"); if (c) { c.classList.remove("nudge"); void c.offsetWidth; c.classList.add("nudge"); } };
+  const go = (k) => leave(() => { if (locked() && k !== "must") { if (view !== "must") renderHome("must", { cache: true }); lockedMsg(); return; } renderHome(k, { cache: true }); });
   function drawNav() {
     const due = home && home.review ? home.review.due || 0 : 0;
     [snav, bnav].forEach((nv) => {
       nv.innerHTML = "";
-      NAV.forEach(([k, l]) => nv.append(h("a", { href: "#" + k, class: k === view ? "on" : "", "aria-current": k === view ? "page" : null,
-        onclick: (e) => { e.preventDefault(); go(k); } }, svg(k), h("span", {}, l), k === "book" && due ? h("i", { class: "nbdg", "aria-label": due + " câu đến hạn" }, String(due > 99 ? "99+" : due)) : null)));
+      const lk = locked();
+      NAV.forEach(([k, l]) => nv.append(h("a", { href: "#" + k, class: (k === view || (lk && k === "tests") ? "on" : "") + (lk ? " lk" : ""), "aria-current": k === view ? "page" : null,
+        "aria-disabled": lk && k !== "tests" ? "true" : null, title: lk && k !== "tests" ? "Làm xong bài kiểm tra được giao để mở mục này" : null,
+        onclick: (e) => { e.preventDefault(); if (lk) { if (k === "tests") { if (view !== "must") renderHome("must", { cache: true }); } else lockedMsg(); return; } go(k); } },
+        svg(lk && k !== "tests" ? "lock" : k), h("span", {}, l), !lk && k === "book" && due ? h("i", { class: "nbdg", "aria-label": due + " câu đến hạn" }, String(due > 99 ? "99+" : due)) : null,
+        lk && k === "tests" ? h("i", { class: "nbdg", "aria-label": mustList().length + " bài cần làm" }, String(mustList().length)) : null)));
     });
   }
   new MutationObserver(() => document.body.classList.toggle("has-nav", !!(sess && app.querySelector(":scope > .view")))).observe(app, { childList: true });
 
   async function renderHome(v, opt) {
-    view = typeof v === "string" && (NAV.some(([k]) => k === v) || v === "notes") ? v : "home";
+    view = typeof v === "string" && (NAV.some(([k]) => k === v) || v === "notes" || v === "must") ? v : "home";
     stopTimers(); cur = null; window.scrollTo(0, 0);
     const cached = opt && opt.cache && home && Date.now() - homeAt < 60000;
     if (!cached) {
@@ -294,17 +304,20 @@
         homeAt = Date.now(); liveProm = rpc("live_list").catch(() => []);
       } catch (e) { app.innerHTML = ""; fail(e); app.append(h("div", { class: "wrap view empty-state" }, h("h2", {}, "Không tải được dữ liệu"), h("p", {}, "Kiểm tra kết nối mạng rồi thử lại."), h("button", { class: "btn", onclick: () => renderHome(view) }, "Thử lại"))); return; }
     }
+    if (locked()) view = "must"; else if (view === "must") view = "home";
     setWho(); drawNav();
     if (!cached && !gateOk) rpc("gate_get").then((g) => { if (g && g.need) showGate(g); else gateOk = true; }).catch(() => { });
     try { history.replaceState(null, "", "#" + view); } catch (e) { }
     app.innerHTML = "";
     const w = h("section", { class: "wrap view v-" + view });
-    ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve, game: viewGame, notes: viewNotes })[view](w);
-    if (view !== "notes") { const tk = nbTicker(); if (tk) app.append(tk); }
-    nbFab();
+    ({ home: viewHome, learn: viewLearn, tests: viewTests, book: viewBook, achieve: viewAchieve, game: viewGame, notes: viewNotes, must: viewMust })[view](w);
+    if (view !== "must") {
+      if (view !== "notes") { const tk = nbTicker(); if (tk) app.append(tk); }
+      nbFab();
+    } else if (fabEl) { fabEl.remove(); fabEl = null; }
     app.append(w);
     KT.typeset(app);
-    if (!cached) setTimeout(celebrate, 500);
+    if (!cached && view !== "must") setTimeout(celebrate, 500);
   }
   function skeleton() {
     const b = (cls) => h("div", { class: "skel " + (cls || "") });
@@ -623,6 +636,83 @@
       h("div", { class: "tc-act" }, btn, res));
   }
   const testGrid = (list) => h("div", { class: "tgrid" }, list.map(testCard));
+  // màn hình bắt buộc: bài được giao chưa làm xong
+  function viewMust(w) {
+    const list = mustList(), all = home.assignments || [];
+    const soon = all.filter((a) => tStatus(a) === "soon");
+    const doneOpen = all.filter((a) => tStatus(a) === "done").length, total = list.length + doneOpen;
+    const name = String(home.student.name || sess.name || "").trim().split(/\s+/).slice(-1)[0];
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const ticks = [];
+    const seg = (lab) => { const v = h("b", {}, "00"); return [h("span", { class: "cd-seg" }, v, h("small", {}, lab)), v]; };
+    const card = (a, i) => {
+      const s = tStatus(a), op = new Date(a.opens_at).getTime(), cl = new Date(a.closes_at).getTime();
+      const cta = s === "doing" ? "Làm tiếp bài" : s === "rem" ? "Làm bài bổ sung" : "Bắt đầu làm bài";
+      const act = () => (s === "rem" ? startRemedial(a.remedial) : openAssignment(a));
+      const [dS, dV] = seg("ngày"), [hS, hV] = seg("giờ"), [mS, mV] = seg("phút"), [sS, sV] = seg("giây");
+      const R = 21, C = 2 * Math.PI * R;
+      const ring = h("span", { class: "must-ring", "aria-hidden": "true" });
+      ring.innerHTML = '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" class="ring-b"/><circle cx="26" cy="26" r="21" class="ring-v" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + C.toFixed(1) + '"/></svg>';
+      const arc = ring.querySelector(".ring-v");
+      const pct = h("i", {}, "");
+      ring.append(pct);
+      const cdBox = h("div", { class: "must-cd", role: "timer", "aria-label": "Thời gian còn lại đến hạn nộp" }, dS, hS, mS, sS);
+      ticks.push((now) => {
+        const ms = cl - now, left = Math.max(0, ms);
+        const d = Math.floor(left / 864e5), hh = Math.floor(left % 864e5 / 36e5), mm = Math.floor(left % 36e5 / 6e4), ss = Math.floor(left % 6e4 / 1e3);
+        dS.hidden = d === 0; sS.hidden = d > 0;
+        dV.textContent = String(d); hV.textContent = String(hh).padStart(2, "0"); mV.textContent = String(mm).padStart(2, "0");
+        if (sV.textContent !== String(ss).padStart(2, "0")) { sV.textContent = String(ss).padStart(2, "0"); if (!reduce) { sV.classList.remove("flip"); void sV.offsetWidth; sV.classList.add("flip"); } }
+        const f = Math.min(1, Math.max(0, left / Math.max(1, cl - op)));
+        arc.setAttribute("stroke-dashoffset", (C * (1 - f)).toFixed(1));
+        pct.textContent = Math.round(f * 100) + "%";
+        el.classList.toggle("hot", ms < 864e5); el.classList.toggle("fire", ms < 36e5);
+        return ms <= 0;
+      });
+      const row = (k, v) => h("div", {}, h("dt", {}, k), h("dd", {}, v));
+      const el = h("article", { class: "must-card" + (i === 0 ? " first" : "") + " st-" + s, style: "--d:" + (0.18 + i * 0.09) + "s" },
+        i === 0 ? h("span", { class: "must-flag" }, "Làm bài này trước") : null,
+        h("div", { class: "must-top" }, h("span", { class: "tag" }, a.kind || "Bài kiểm tra"), h("span", { class: "pill " + TST[s][1] }, TST[s][0])),
+        h("h3", {}, a.title),
+        h("dl", { class: "must-meta" }, row("Số câu", String(a.n_q)), row("Làm trong", a.minutes + " phút"),
+          row("Hạn nộp", KT.dt(a.closes_at)), a.max_attempts > 1 ? row("Lượt làm", a.done + "/" + a.max_attempts) : row("Lượt làm", "1 lần")),
+        h("div", { class: "must-due" }, ring, h("div", { class: "must-due-r" }, h("span", { class: "must-due-t" }, "Còn lại đến hạn nộp"), cdBox)),
+        s === "doing" ? h("p", { class: "must-note" }, "Em đang làm dở bài này, đồng hồ làm bài vẫn đang chạy.") : s === "rem" ? h("p", { class: "must-note" }, "Thầy cô yêu cầu em làm thêm bài bổ sung cho bài này.") : null,
+        h("button", { class: "btn acc must-go", onclick: act }, h("span", {}, cta), h("span", { class: "must-arr", "aria-hidden": "true" }, "→")));
+      if (!reduce) {     // nghiêng nhẹ theo chuột
+        el.addEventListener("pointermove", (e) => { if (e.pointerType !== "mouse") return; const r = el.getBoundingClientRect(); el.style.setProperty("--rx", ((e.clientY - r.top) / r.height - 0.5) * -5 + "deg"); el.style.setProperty("--ry", ((e.clientX - r.left) / r.width - 0.5) * 7 + "deg"); });
+        el.addEventListener("pointerleave", () => { el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); });
+      }
+      return el;
+    };
+    const tickAll = () => {
+      const now = Date.now() + clockSkew;
+      let expired = false;
+      ticks.forEach((f) => { if (f(now)) expired = true; });
+      if (expired) { clearInterval(mustTimer); setTimeout(() => renderHome("must"), 1500); }
+    };
+    const GLY = ["π", "∑", "√", "∫", "△", "x²", "∞", "÷", "θ", "%"];
+    const float = h("div", { class: "must-float", "aria-hidden": "true" }, GLY.map((g, i) => h("span", { style: "--x:" + ((i * 37) % 100) + "%;--y:" + ((i * 53 + 11) % 90) + "%;--t:" + (14 + (i % 4) * 4) + "s;--dl:" + (-i * 1.7) + "s;--sz:" + (18 + (i % 3) * 10) + "px" }, g)));
+    const bar = h("i", {});
+    const LOCK = [["learn", "Học tập"], ["book", "Sổ câu sai"], ["achieve", "Thành tích"], ["game", "Linh thú"], ["notes", "Sổ tay"]];
+    w.append(h("div", { class: "must-hero", role: "region", "aria-labelledby": "mustT" }, float,
+      h("div", { class: "must-head" },
+        h("div", {},
+          h("p", { class: "must-hi" }, "Chào " + (name || "em") + " 👋"),
+          h("h2", { id: "mustT" }, "Em có ", h("span", { class: "must-n" }, String(list.length)), list.length === 1 ? " bài kiểm tra cần hoàn thành" : " bài kiểm tra cần hoàn thành"),
+          h("p", { class: "must-sub" }, "Thầy cô đã giao bài cho lớp " + (home.student.class || "của em") + ". Em làm xong bài thì các mục khác sẽ mở lại.")),
+        total > 1 ? h("div", { class: "must-prog", "aria-label": "Đã làm xong " + doneOpen + " trên " + total + " bài" },
+          h("span", {}, "Đã xong ", h("b", {}, doneOpen + "/" + total), " bài"), h("div", { class: "must-bar" }, bar)) : null),
+      h("div", { class: "must-grid" }, list.map(card)),
+      h("div", { class: "must-locked" }, h("span", { class: "must-lk-t" }, svg("lock"), "Tạm khoá đến khi em làm xong:"),
+        LOCK.map(([k, l], i) => h("span", { class: "must-lk", style: "--i:" + i }, svg("lock"), l)))),
+      soon.length ? h("div", { class: "must-soon" }, h("h3", {}, "Sắp mở"),
+        h("ul", {}, soon.map((a) => h("li", {}, h("b", {}, a.title), h("span", {}, "mở lúc " + KT.dt(a.opens_at) + ", " + a.n_q + " câu, " + a.minutes + " phút"))))) : null);
+    tickAll(); mustTimer = setInterval(tickAll, 1000);
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = (total ? Math.round(doneOpen / total * 100) : 0) + "%"; }));
+    setTimeout(() => { const b = w.querySelector(".must-go"); if (b) try { b.focus({ preventScroll: true }); } catch (e) { } }, 60);
+  }
+
   let tFilter = "all", tQuery = "";
   function viewTests(w) {
     const all = home.assignments || [];
